@@ -13,6 +13,8 @@ let st : states = BatSet.of_list [3; 1; 4; 1; 5]   (* 중복은 자동 제거 *)
 let () =
   BatSet.iter (fun s -> Printf.printf "state = %d\n" s) st
 ;;
+
+let a, new_set = BatSet.pop st 
 (* 출력 예
    state = 1
    state = 3

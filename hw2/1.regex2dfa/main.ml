@@ -7,6 +7,8 @@ let testcases : (Regex.t * alphabet list) list =
     (Alpha A, [A]);
     (Alpha A, [B]);
     (OR (Alpha A, Alpha B), [B]);
+    (CONCAT (Alpha A, Alpha B), [A;B]);
+    (CONCAT(Alpha A, OR(Alpha A, Alpha B)), [A;A])
     (*
     (CONCAT (STAR (Alpha A), Alpha B), [B]);
     (CONCAT (STAR (Alpha A), Alpha B), [A;B]);
