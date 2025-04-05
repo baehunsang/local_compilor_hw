@@ -3,6 +3,7 @@ open Regex
 let testcases : (Regex.t * alphabet list) list = 
   [ 
     (Empty, []);
+    (*
     (Epsilon, []);
     (Alpha A, [A]);
     (Alpha A, [B]);
@@ -16,8 +17,9 @@ let testcases : (Regex.t * alphabet list) list =
     (CONCAT (CONCAT (STAR (CONCAT (Alpha A, Alpha A)), STAR (CONCAT (Alpha B, Alpha B))), Alpha B), [B;B;B]);
     (CONCAT (CONCAT (STAR (CONCAT (Alpha A, Alpha A)), STAR (CONCAT (Alpha B, Alpha B))), Alpha B), [A;A;A;A;B;B;B]);
     (CONCAT (CONCAT (STAR (CONCAT (Alpha A, Alpha A)), STAR (CONCAT (Alpha B, Alpha B))), Alpha B), [A;A;A;B;B;B])
-  ]
-
+    *)
+    ]
+(*
 let match_regex : Regex.t -> alphabet list -> bool
 =fun regex input -> Trans.run_dfa (Trans.regex2dfa regex) input
 
@@ -25,4 +27,12 @@ let match_regex : Regex.t -> alphabet list -> bool
 let _ = 
   List.iter (fun (regex, str) -> 
     prerr_endline (string_of_bool (match_regex regex str)) 
+  ) testcases
+*)
+
+(*TC1*)
+
+let _ = 
+  List.iter (fun (regex, _) -> 
+    Nfa.print (Trans.regex2nfa regex)
   ) testcases

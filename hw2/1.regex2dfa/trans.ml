@@ -3,7 +3,10 @@ open Regex
 exception Not_implemented
 
 let regex2nfa : Regex.t -> Nfa.t 
-=fun _ -> raise Not_implemented (* TODO *)
+=fun regex -> 
+  match regex with
+  | Empty -> Nfa.create_new_nfa ()
+  | _ -> raise Not_implemented
 
 let nfa2dfa : Nfa.t -> Dfa.t
 =fun _ -> raise Not_implemented (* TODO *)
