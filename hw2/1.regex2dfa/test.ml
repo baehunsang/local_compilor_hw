@@ -16,7 +16,6 @@ let testcases : (Regex.t * alphabet list) list =
     (Alpha B, [A]);
     (OR (Alpha A, Alpha B), [B]);
     (CONCAT (Alpha A, Alpha B), [A;B]);
-    (*
     (CONCAT (STAR (Alpha A), Alpha B), [B]);
     (CONCAT (STAR (Alpha A), Alpha B), [A;B]);
     (CONCAT (STAR (Alpha A), Alpha B), [A;A;B]);
@@ -26,8 +25,9 @@ let testcases : (Regex.t * alphabet list) list =
     (CONCAT (CONCAT (STAR (CONCAT (Alpha A, Alpha A)), STAR (CONCAT (Alpha B, Alpha B))), Alpha B), [B;B;B]);
     (CONCAT (CONCAT (STAR (CONCAT (Alpha A, Alpha A)), STAR (CONCAT (Alpha B, Alpha B))), Alpha B), [A;A;A;A;B;B;B]);
     (CONCAT (CONCAT (STAR (CONCAT (Alpha A, Alpha A)), STAR (CONCAT (Alpha B, Alpha B))), Alpha B), [A;A;A;B;B;B])
-    *)
     ];;
+
+  
 let union_nfa: Nfa.t -> Nfa.t -> Nfa.t =
     fun r1 r2 -> 
       let base = Nfa.create_new_nfa () in 
@@ -42,7 +42,7 @@ let union_nfa: Nfa.t -> Nfa.t -> Nfa.t =
       let r1_finals = Nfa.get_final_states r1 in 
       let r1_union_r2 = BatSet.fold (fun f acc -> Nfa.add_epsilon_edge acc (f, new_final)) r1_finals r1_union_r2 in
       let r2_finals = Nfa.get_final_states r2 in
-      BatSet.fold (fun f acc -> Nfa.add_epsilon_edge acc (f, new_final)) r2_finals r1_union_r2
+      BatSet.fold (fun f acc -> Nfa.add_epsilon_edge acc (f, new_final)) r2_finals r1_union_r2;;
 
 let concat_nfa: Nfa.t -> Nfa.t -> Nfa.t =
   fun r1 r2 -> 
@@ -60,7 +60,23 @@ let concat_nfa: Nfa.t -> Nfa.t -> Nfa.t =
     let base = Nfa.add_states base (Nfa.get_states r2) in
     let base = Nfa.add_edges base (Nfa.get_edges r2) in 
     let base = BatSet.fold (fun f acc -> Nfa.add_final_state acc f) (Nfa.get_final_states r2) base in
-    BatSet.fold (fun f acc -> Nfa.add_epsilon_edge acc (f, Nfa.get_initial_state r2)) (Nfa.get_final_states r1) base
+    BatSet.fold (fun f acc -> Nfa.add_epsilon_edge acc (f, Nfa.get_initial_state r2)) (Nfa.get_final_states r1) base;;
+
+let star_nfa: Nfa.t -> Nfa.t = 
+    fun r1 ->
+      let base = Nfa.create_new_nfa () in 
+      let base_init = Nfa.get_initial_state base in 
+      let new_final, base = Nfa.create_state base in 
+      let base = Nfa.add_final_state base new_final in 
+      let base = Nfa.add_states base (Nfa.get_states r1) in 
+      let base = Nfa.add_edges base (Nfa.get_edges r1) in 
+
+      let base = Nfa.add_epsilon_edge base (base_init, new_final) in 
+      let base = Nfa.add_epsilon_edge base (base_init, Nfa.get_initial_state r1) in 
+
+      let base = BatSet.fold (fun f acc -> Nfa.add_epsilon_edge acc (f, Nfa.get_initial_state r1)) (Nfa.get_final_states r1) base in 
+      BatSet.fold (fun f acc -> Nfa.add_epsilon_edge acc (f, new_final)) (Nfa.get_final_states r1) base;;
+
 
 let rec regex2nfa : Regex.t -> Nfa.t 
 =fun regex -> 
@@ -88,7 +104,9 @@ let rec regex2nfa : Regex.t -> Nfa.t
     let complied_r2 = regex2nfa r2 in 
     concat_nfa complied_r1 complied_r2
 
-  | _ -> raise Not_implemented
+  | STAR r1 ->
+    let complied_r1 = regex2nfa r1 in 
+    star_nfa complied_r1
   ;;
 
 
