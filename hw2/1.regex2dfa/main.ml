@@ -3,8 +3,8 @@ open Regex
 let testcases : (Regex.t * alphabet list) list = 
   [ 
     (Empty, []);
-    (*
     (Epsilon, []);
+    (*
     (Alpha A, [A]);
     (Alpha A, [B]);
     (OR (Alpha A, Alpha B), [B]);

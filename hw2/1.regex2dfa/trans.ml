@@ -6,6 +6,12 @@ let regex2nfa : Regex.t -> Nfa.t
 =fun regex -> 
   match regex with
   | Empty -> Nfa.create_new_nfa ()
+  | Epsilon -> 
+    let new_nfa = Nfa.create_new_nfa () in 
+    let new_st, new_nfa = Nfa.create_state new_nfa in 
+    let new_nfa = Nfa.add_final_state new_nfa new_st in 
+    Nfa.add_epsilon_edge new_nfa (Nfa.get_initial_state new_nfa , new_st) 
+    
   | _ -> raise Not_implemented
 
 let nfa2dfa : Nfa.t -> Dfa.t
