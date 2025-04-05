@@ -4,10 +4,10 @@ let testcases : (Regex.t * alphabet list) list =
   [ 
     (Empty, []);
     (Epsilon, []);
-    (*
     (Alpha A, [A]);
     (Alpha A, [B]);
     (OR (Alpha A, Alpha B), [B]);
+    (*
     (CONCAT (STAR (Alpha A), Alpha B), [B]);
     (CONCAT (STAR (Alpha A), Alpha B), [A;B]);
     (CONCAT (STAR (Alpha A), Alpha B), [A;A;B]);
