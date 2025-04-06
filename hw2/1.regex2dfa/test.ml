@@ -2,10 +2,12 @@
 #require "batteries";;
 #mod_use "regex.ml";;
 #mod_use "nfa.ml";;
+#mod_use "dfa.ml";;
 
 exception Not_implemented;;
 open Regex;;
 open Nfa;;
+open Dfa;;
 
 let testcases : (Regex.t * alphabet list) list = 
   [ 
@@ -110,7 +112,7 @@ let rec regex2nfa : Regex.t -> Nfa.t
   ;;
 
 
-let r = CONCAT (STAR (Alpha A), Alpha B);;
+let r = Epsilon;;
 
 let nfa = regex2nfa r;;
 
@@ -120,26 +122,97 @@ let epsilon_closer: Nfa.t->Nfa.state->Nfa.states =
   fun nfa state -> 
     let queue = [state] in 
     let visited = BatSet.singleton state in
-    
+    let ret = BatSet.singleton state in 
+
+    (*BFS*)
     let rec loop = 
-      fun wq ret ->
+      fun wq visited ret ->
         match wq with
         | [] -> ret
-        | cur::next -> 
+        | cur::next ->
           let next_states = Nfa.get_next_state_epsilon nfa cur in 
-          let new_visited = BatSet.fold (fun f acc -> BatSet.add f acc) next_states ret in 
-          let next_work = BatSet.fold (fun f acc -> if BatSet.mem f new_visited then acc@[f] else acc) next_states [] in 
-          loop (next@next_work) new_visited
+          let new_ret = BatSet.union next_states ret in 
+          let next_work = BatSet.fold (fun f acc -> if not (BatSet.mem f visited) then acc@[f] else acc) next_states [] in 
+          let visited = BatSet.union next_states visited in 
+          loop (next@next_work) visited new_ret
     in 
-    loop queue visited;;
+    loop queue visited ret;;
 
 
 let e_7 = epsilon_closer nfa (Nfa.get_initial_state nfa);;
 let _ = BatSet.iter (fun s -> Printf.printf "state = %d\n" s) e_7;;
+
 
 let e_1 = epsilon_closer nfa 1;;
 let _ = BatSet.iter (fun s -> Printf.printf "state = %d\n" s) e_1;;
 
 let e_2 = epsilon_closer nfa 2;;
 let _ = BatSet.iter (fun s -> Printf.printf "state = %d\n" s) e_2;;
+
+let epsilon_closer_of_states: Nfa.t->Nfa.states->Nfa.states =
+    fun nfa sts -> 
+      BatSet.fold (fun f acc -> BatSet.union acc (epsilon_closer nfa f)) sts BatSet.empty;;
+
+let e_127 = epsilon_closer_of_states nfa (BatSet.of_list [1;2;7]);; 
+let _ = BatSet.iter (fun s -> Printf.printf "state = %d\n" s) e_127;;
+
+
+let nfa2dfa : Nfa.t -> Dfa.t = 
+  fun nfa -> 
+    let d0 = epsilon_closer nfa (Nfa.get_initial_state nfa) in 
+    
+    let visited = BatSet.singleton d0 in 
+    let ret_dfa = Dfa.create_new_dfa d0 in
+    let ret_dfa = if not (BatSet.is_empty (BatSet.intersect d0 (Nfa.get_final_states nfa))) then (Dfa.add_final_state ret_dfa d0) else ret_dfa in   
+    let queue = [d0] in 
+
+    (*BFS*)
+    let rec loop = fun wq visited ret ->
+      match wq with
+      | [] -> ret
+      | cur::next -> 
+        let _ = print_endline "" in 
+        let _ = BatSet.iter (fun s -> Printf.printf "cur = %d\n" s) cur in 
+
+        (*For A*)
+        let union_delta = BatSet.fold (fun f acc -> BatSet.union acc (Nfa.get_next_state nfa f Regex.A)) cur BatSet.empty in 
+        let t = epsilon_closer_of_states nfa union_delta in
+
+        let _ = print_endline "" in 
+        let _ = BatSet.iter (fun s -> Printf.printf "t_A = %d\n" s) t in  
+
+        let next_ret = if not (BatSet.is_empty t) then Dfa.add_state ret t else ret in 
+        let next_ret = if not (BatSet.is_empty t) then Dfa.add_edge next_ret (cur, A, t) else next_ret in 
+        let next_ret = if not (BatSet.is_empty (BatSet.intersect t (Nfa.get_final_states nfa))) then (Dfa.add_final_state next_ret t) else next_ret in 
+        let next_wq = if not (BatSet.mem t visited) && not (BatSet.is_empty t) then next@[t] else next in 
+        let new_visited = BatSet.union visited (BatSet.singleton t) in
+
+        let _ = print_endline "" in  
+        let _ = Dfa.print next_ret in
+
+        (*For B*)
+        let union_delta = BatSet.fold (fun f acc -> BatSet.union acc (Nfa.get_next_state nfa f Regex.B)) cur BatSet.empty in 
+        let t = epsilon_closer_of_states nfa union_delta in 
+
+        let _ = print_endline "" in 
+        let _ = BatSet.iter (fun s -> Printf.printf "t_B = %d\n" s) t in  
+
+        let next_ret = if not (BatSet.is_empty t) then Dfa.add_state next_ret t else next_ret in 
+        let next_ret = if not (BatSet.is_empty t) then Dfa.add_edge next_ret (cur, B, t) else next_ret in 
+        let next_ret = if not (BatSet.is_empty (BatSet.intersect t (Nfa.get_final_states nfa))) then (Dfa.add_final_state next_ret t) else next_ret in 
+        let next_wq = if not (BatSet.mem t new_visited) && not (BatSet.is_empty t) then next_wq@[t] else next_wq in 
+        let new_visited = BatSet.union new_visited (BatSet.singleton t) in 
+
+        let _ = print_endline "" in  
+        let _ = Dfa.print next_ret in 
+
+        loop next_wq new_visited next_ret
+    in 
+
+    loop queue visited ret_dfa
+
+let dfa = nfa2dfa nfa;;
+
+let _ = Dfa.print dfa;;
+
 

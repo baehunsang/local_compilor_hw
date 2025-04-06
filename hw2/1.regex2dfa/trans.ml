@@ -83,8 +83,73 @@ let rec regex2nfa : Regex.t -> Nfa.t
           let complied_r1 = regex2nfa r1 in 
           star_nfa complied_r1
 
-let nfa2dfa : Nfa.t -> Dfa.t
-=fun _ -> raise Not_implemented (* TODO *)
+let epsilon_closer: Nfa.t->Nfa.state->Nfa.states =
+  fun nfa state -> 
+    let queue = [state] in 
+    let visited = BatSet.singleton state in
+    let ret = BatSet.singleton state in 
+    (*BFS*)
+    let rec loop = 
+      fun wq visited ret ->
+        match wq with
+        | [] -> ret
+        | cur::next ->
+          let next_states = Nfa.get_next_state_epsilon nfa cur in 
+          let new_ret = BatSet.union next_states ret in 
+          let next_work = BatSet.fold (fun f acc -> if not (BatSet.mem f visited) then acc@[f] else acc) next_states [] in 
+          let visited = BatSet.union next_states visited in 
+          loop (next@next_work) visited new_ret
+    in 
+    loop queue visited ret
+
+let epsilon_closer_of_states: Nfa.t->Nfa.states->Nfa.states =
+  fun nfa sts -> 
+    BatSet.fold (fun f acc -> BatSet.union acc (epsilon_closer nfa f)) sts BatSet.empty;;
+
+
+let nfa2dfa : Nfa.t -> Dfa.t = 
+  fun nfa -> 
+    let d0 = epsilon_closer nfa (Nfa.get_initial_state nfa) in 
+    
+    let visited = BatSet.singleton d0 in 
+    let ret_dfa = Dfa.create_new_dfa d0 in 
+    let ret_dfa = if not (BatSet.is_empty (BatSet.intersect d0 (Nfa.get_final_states nfa))) then (Dfa.add_final_state ret_dfa d0) else ret_dfa in   
+    let queue = [d0] in 
+
+    (*BFS*)
+    let rec loop = fun wq visited ret ->
+      match wq with
+      | [] -> ret
+      | cur::next -> 
+
+        (*For A*)
+        let union_delta = BatSet.fold (fun f acc -> BatSet.union acc (Nfa.get_next_state nfa f Regex.A)) cur BatSet.empty in 
+        let t = epsilon_closer_of_states nfa union_delta in
+
+
+        let next_ret = if not (BatSet.is_empty t) then Dfa.add_state ret t else ret in 
+        let next_ret = if not (BatSet.is_empty t) then Dfa.add_edge next_ret (cur, A, t) else next_ret in 
+        let next_ret = if not (BatSet.is_empty (BatSet.intersect t (Nfa.get_final_states nfa))) then (Dfa.add_final_state next_ret t) else next_ret in 
+        let next_wq = if not (BatSet.mem t visited) && not (BatSet.is_empty t) then next@[t] else next in 
+        let new_visited = BatSet.union visited (BatSet.singleton t) in
+
+
+        (*For B*)
+        let union_delta = BatSet.fold (fun f acc -> BatSet.union acc (Nfa.get_next_state nfa f Regex.B)) cur BatSet.empty in 
+        let t = epsilon_closer_of_states nfa union_delta in 
+
+
+        let next_ret = if not (BatSet.is_empty t) then Dfa.add_state next_ret t else next_ret in 
+        let next_ret = if not (BatSet.is_empty t) then Dfa.add_edge next_ret (cur, B, t) else next_ret in 
+        let next_ret = if not (BatSet.is_empty (BatSet.intersect t (Nfa.get_final_states nfa))) then (Dfa.add_final_state next_ret t) else next_ret in 
+        let next_wq = if not (BatSet.mem t new_visited) && not (BatSet.is_empty t) then next_wq@[t] else next_wq in 
+        let new_visited = BatSet.union new_visited (BatSet.singleton t) in 
+
+
+        loop next_wq new_visited next_ret
+    in 
+
+    loop queue visited ret_dfa
  
 (* Do not modify this function *)
 let regex2dfa : Regex.t -> Dfa.t

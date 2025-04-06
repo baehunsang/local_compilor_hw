@@ -31,8 +31,14 @@ let _ =
 *)
 
 (*TC1*)
-
+(*
 let _ = 
   List.iter (fun (regex, _) -> 
     Nfa.print (Trans.regex2nfa regex)
+  ) testcases*)
+
+(*TC2*)
+let _ = 
+  List.iter (fun (regex, _) -> 
+    Dfa.print (Trans.nfa2dfa (Trans.regex2nfa regex))
   ) testcases
