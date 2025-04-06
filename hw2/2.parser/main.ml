@@ -62,10 +62,26 @@ let cfg4 = (
   ] 
 )
 
+let cfg5 = (
+  [N "E";N "E'"; N "T"; N "T'";N "F"],
+  [T "+"; T "*"; T "("; T ")"; T "a"],
+  N "E",
+  [
+    (N "E", [N "T"; N "E'"]);
+    (N "E'", [T "+";N "T"; N "E'"]);
+    (N "E'", []);
+    (N "T", [N "F"; N "T'"]);
+    (N "T'", [T "*"; N "F"; N "T'"]);
+    (N "T'", []);
+    (N "F", [T "("; N "E"; T ")"]);
+    (N "F", [T "a"])
+  ]
+)
+
 let s1 = [T "id"; T "+"; T "id"; T "*"; T "id"; End]
 let s2 = [T "id"; T "/"; T "("; T "num"; T "+"; T "id"; T ")"; End]
 
-let cfgs = [cfg1; cfg2; cfg3; cfg4]
+let cfgs = [cfg1; cfg2; cfg3; cfg4;cfg5]
 let main () =
   List.iter (fun cfg ->
     print_endline (string_of_bool (check_LL1 cfg))

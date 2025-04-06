@@ -4,7 +4,6 @@
 #mod_use "util.ml";;
 #mod_use "parse.ml";;
 
-open Base;;
 open Util;;
 open Parse;;
 
@@ -127,9 +126,9 @@ let _ = print_endline (FIRST.tostring first_map);;
 
 
 
-let find_follow: cfg-> FOLLOW.t = 
-fun cfg ->
-  let (_, nt, start_symbol, prods) = cfg in
+let find_follow: cfg->FIRST.t-> FOLLOW.t = 
+fun cfg first_map->
+  let (_, _, start_symbol, prods) = cfg in
 
   (*initialize followset*)
   let init_follow = FOLLOW.empty in 
@@ -149,10 +148,8 @@ fun cfg ->
 
               follow
             else
-              let cur_sym = match List.nth dst i with
-              | Some sym -> sym
-              | None -> raise (Failure "not exist") in 
-              
+              let cur_sym = List.nth dst i in
+            
               match cur_sym with 
               | N _ -> 
                 let beta = Util.drop (i+1) (dst) in 
@@ -166,15 +163,14 @@ fun cfg ->
                   else 
                     next_follow in 
                 for_loop (i+1) next_follow
-              | T _ -> 
-
+              | _ -> 
                 for_loop (i+1) follow
             in 
           for_loop 0 acc 
       ) prods follow_map in 
 
       if BatMap.equal (BatSet.equal) next follow_map then follow_map else loop next in 
-  loop init_follow;;
+  loop init_follow
 
-let follow = find_follow cfg1;;
+let follow = find_follow cfg1 first_map;;
 let _ = print_string (FOLLOW.tostring follow);;

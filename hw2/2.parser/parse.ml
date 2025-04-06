@@ -123,9 +123,9 @@ let find_first : cfg->FIRST.t =
     
     loop init_first
 
-    let find_follow: cfg-> FOLLOW.t = 
-    fun cfg ->
-      let (_, nt, start_symbol, prods) = cfg in
+    let find_follow: cfg->FIRST.t-> FOLLOW.t = 
+    fun cfg first_map->
+      let (_, _, start_symbol, prods) = cfg in
     
       (*initialize followset*)
       let init_follow = FOLLOW.empty in 
@@ -145,10 +145,8 @@ let find_first : cfg->FIRST.t =
     
                   follow
                 else
-                  let cur_sym = match List.nth dst i with
-                  | Some sym -> sym
-                  | None -> raise (Failure "not exist") in 
-                  
+                  let cur_sym = List.nth dst i in
+                
                   match cur_sym with 
                   | N _ -> 
                     let beta = Util.drop (i+1) (dst) in 
@@ -162,8 +160,7 @@ let find_first : cfg->FIRST.t =
                       else 
                         next_follow in 
                     for_loop (i+1) next_follow
-                  | T _ -> 
-    
+                  | _ -> 
                     for_loop (i+1) follow
                 in 
               for_loop 0 acc 
