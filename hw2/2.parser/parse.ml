@@ -123,6 +123,54 @@ let find_first : cfg->FIRST.t =
     
     loop init_first
 
+    let find_follow: cfg-> FOLLOW.t = 
+    fun cfg ->
+      let (_, nt, start_symbol, prods) = cfg in
+    
+      (*initialize followset*)
+      let init_follow = FOLLOW.empty in 
+      let init_follow = FOLLOW.add start_symbol End init_follow in 
+    
+      (*fixed point loop*)
+      let rec loop = 
+        fun follow_map -> 
+          let next = Util.list_fold 
+          (
+            fun (src, dst) acc -> 
+              let len = List.length dst in
+    
+              
+              let rec for_loop i follow =
+                if i >= len then
+    
+                  follow
+                else
+                  let cur_sym = match List.nth dst i with
+                  | Some sym -> sym
+                  | None -> raise (Failure "not exist") in 
+                  
+                  match cur_sym with 
+                  | N _ -> 
+                    let beta = Util.drop (i+1) (dst) in 
+                    
+                    let first_beta = first_of_symbols beta first_map in 
+                    let first_beta_wo_e = BatSet.remove Epsilon first_beta in
+                    let next_follow = FOLLOW.add_set cur_sym first_beta_wo_e follow in
+                    let next_follow = 
+                      if BatSet.mem Epsilon first_beta then
+                        FOLLOW.add_set cur_sym (FOLLOW.find src next_follow) next_follow
+                      else 
+                        next_follow in 
+                    for_loop (i+1) next_follow
+                  | T _ -> 
+    
+                    for_loop (i+1) follow
+                in 
+              for_loop 0 acc 
+          ) prods follow_map in 
+    
+          if BatMap.equal (BatSet.equal) next follow_map then follow_map else loop next in 
+      loop init_follow
 
 let check_LL1 : cfg -> bool
 =fun cfg -> 
@@ -130,6 +178,11 @@ let check_LL1 : cfg -> bool
   let _ = print_endline "" in 
   let _ = print_endline "[*] first map" in 
   let _ = print_string (FIRST.tostring first_map) in 
+
+  let follow_map = find_follow cfg first_map in 
+  let _ = print_endline "" in 
+  let _ = print_endline "[*] follow map" in 
+  let _ = print_string (FOLLOW.tostring follow_map) in 
   false (* TODO *)
 
 let parse : cfg -> symbol list -> bool
