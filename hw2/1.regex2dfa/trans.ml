@@ -104,7 +104,7 @@ let epsilon_closer: Nfa.t->Nfa.state->Nfa.states =
 
 let epsilon_closer_of_states: Nfa.t->Nfa.states->Nfa.states =
   fun nfa sts -> 
-    BatSet.fold (fun f acc -> BatSet.union acc (epsilon_closer nfa f)) sts BatSet.empty;;
+    BatSet.fold (fun f acc -> BatSet.union acc (epsilon_closer nfa f)) sts BatSet.empty
 
 
 let nfa2dfa : Nfa.t -> Dfa.t = 
@@ -159,4 +159,15 @@ let regex2dfa : Regex.t -> Dfa.t
     dfa
 
 let run_dfa : Dfa.t -> alphabet list -> bool
-=fun _ _ -> raise Not_implemented (* TODO *)
+=fun dfa l -> 
+  let rec loop = fun cur l ->
+    match l with 
+    | [] -> Dfa.is_final_state dfa cur
+    | h::tl -> 
+      try
+        let next = Dfa.get_next_state dfa cur h in 
+        loop next tl
+      with _ ->
+        false
+    in 
+  loop (Dfa.get_initial_state dfa) l

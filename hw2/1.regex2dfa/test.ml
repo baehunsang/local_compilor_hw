@@ -216,3 +216,21 @@ let dfa = nfa2dfa nfa;;
 let _ = Dfa.print dfa;;
 
 
+let regex  = Alpha A;;
+let str = [B];;
+
+let run_dfa : Dfa.t -> alphabet list -> bool
+=fun dfa l -> 
+  let rec loop = fun cur l ->
+    match l with 
+    | [] -> Dfa.is_final_state dfa cur
+    | h::tl -> 
+      try
+        let next = Dfa.get_next_state dfa cur h in 
+        loop next tl
+      with _ ->
+        false
+    in 
+  loop (Dfa.get_initial_state dfa) l;;
+
+let final_ans = run_dfa (nfa2dfa (regex2nfa regex)) str;;
