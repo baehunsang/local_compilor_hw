@@ -111,14 +111,10 @@ let find_first : cfg->FIRST.t =
         (fun f acc -> 
           let src, dst = f in 
           let d_syms = first_of_symbols dst acc in 
-          let _ = print_endline "" in 
-          let _ = print_endline ("cur: "^(string_of_symbol src)) in 
-          let _ = print_endline "" in 
-          let _ = BatSet.iter (fun f -> print_endline ("symbols: "^(string_of_symbol f))) d_syms in 
+
           FIRST.add_set src d_syms acc
           ) pr first_map in 
-        let _ = print_endline "" in
-        let _ = print_string (FIRST.tostring next) in 
+
         if BatMap.equal (fun v1 v2 -> BatSet.equal v1 v2) next first_map then first_map else loop next in 
     
     loop init_first;;
