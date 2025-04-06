@@ -79,8 +79,63 @@ module ParsingTable = struct
   let for_all = BatMap.for_all
 end
 
+let rec first_of_symbols: symbol list-> FIRST.t->symbol BatSet.t = 
+  fun syms first_map -> 
+    match syms with
+    (*Dst is epsilon | all First(Nonterminal) contains epsilon*)
+    | [] -> BatSet.singleton Epsilon
+    (*else*)
+    | sym::sym_next -> 
+      let f_sym = FIRST.find sym first_map in 
+      let f_sym_wo_e = BatSet.remove Epsilon f_sym in 
+      if BatSet.mem Epsilon f_sym then BatSet.union (first_of_symbols sym_next first_map) f_sym_wo_e else f_sym_wo_e
+
+let find_first : cfg->FIRST.t = 
+  fun cfg ->
+    let (t, nt, _, pr) = cfg in 
+    let all_symbols = t@nt in  
+
+    (*for all terminal symbols *)
+    let init_first = 
+      Util.list_fold 
+      (fun f acc -> 
+        match f with
+        | T _ -> FIRST.add f f acc
+        | N _ -> acc
+        | Epsilon -> FIRST.add Epsilon Epsilon acc
+        | End -> FIRST.add End End acc
+        )
+      all_symbols 
+      FIRST.empty in
+    
+    let _ = print_endline (FIRST.tostring init_first) in 
+
+    let rec loop = 
+      fun first_map -> 
+        let next = Util.list_fold 
+        (fun f acc -> 
+          let src, dst = f in 
+          let d_syms = first_of_symbols dst acc in 
+          let _ = print_endline "" in 
+          let _ = print_endline ("cur: "^(string_of_symbol src)) in 
+          let _ = print_endline "" in 
+          let _ = BatSet.iter (fun f -> print_endline ("symbols: "^(string_of_symbol f))) d_syms in 
+          FIRST.add_set src d_syms acc
+          ) pr first_map in 
+        let _ = print_endline "" in
+        let _ = print_string (FIRST.tostring next) in 
+        if BatMap.equal (fun v1 v2 -> BatSet.equal v1 v2) next first_map then first_map else loop next in 
+    
+    loop init_first
+
+
 let check_LL1 : cfg -> bool
-=fun _ -> false (* TODO *)
+=fun cfg -> 
+  let first_map = find_first cfg in 
+  let _ = print_endline "" in 
+  let _ = print_endline "[*] first map" in 
+  let _ = print_string (FIRST.tostring first_map) in 
+  false (* TODO *)
 
 let parse : cfg -> symbol list -> bool
 =fun _ _ -> false (* TODO *)
