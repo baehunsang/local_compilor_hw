@@ -110,7 +110,36 @@ let rec regex2nfa : Regex.t -> Nfa.t
   ;;
 
 
-let _ = 
-  List.iter (fun (regex, _) -> 
-    Nfa.print (regex2nfa regex)
-  ) testcases;;
+let r = CONCAT (STAR (Alpha A), Alpha B);;
+
+let nfa = regex2nfa r;;
+
+let _ = Nfa.print nfa;;
+
+let epsilon_closer: Nfa.t->Nfa.state->Nfa.states =
+  fun nfa state -> 
+    let queue = [state] in 
+    let visited = BatSet.singleton state in
+    
+    let rec loop = 
+      fun wq ret ->
+        match wq with
+        | [] -> ret
+        | cur::next -> 
+          let next_states = Nfa.get_next_state_epsilon nfa cur in 
+          let new_visited = BatSet.fold (fun f acc -> BatSet.add f acc) next_states ret in 
+          let next_work = BatSet.fold (fun f acc -> if BatSet.mem f new_visited then acc@[f] else acc) next_states [] in 
+          loop (next@next_work) new_visited
+    in 
+    loop queue visited;;
+
+
+let e_7 = epsilon_closer nfa (Nfa.get_initial_state nfa);;
+let _ = BatSet.iter (fun s -> Printf.printf "state = %d\n" s) e_7;;
+
+let e_1 = epsilon_closer nfa 1;;
+let _ = BatSet.iter (fun s -> Printf.printf "state = %d\n" s) e_1;;
+
+let e_2 = epsilon_closer nfa 2;;
+let _ = BatSet.iter (fun s -> Printf.printf "state = %d\n" s) e_2;;
+
