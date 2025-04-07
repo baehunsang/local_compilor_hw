@@ -232,8 +232,12 @@ let _ = print_endline "\n[*] parsing table";;
 let _ = print_endline (ParsingTable.tostring parsing_table);;
 
 
-    
-      
+let map_all m = 
+  ParsingTable.foldi
+  (fun k v acc -> 
+    ((BatSet.cardinal v)=1)&&acc
+    )
+  m 
+  true;;
 
-
-      
+let b = map_all parsing_table;;

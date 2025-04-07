@@ -181,7 +181,6 @@ fun cfg first_map follow_map ->
       let first_alpha = first_of_symbols alpha first_map in 
       
       (*[1]*)
-      (*for sym in first(alpha)*)
       let ret_table = 
         BatSet.fold 
         (
@@ -219,26 +218,33 @@ fun cfg first_map follow_map ->
       for_prod_in next ret_table in 
   for_prod_in prods ParsingTable.empty
 
+let map_all m = 
+  ParsingTable.foldi
+  (fun _ v acc -> 
+    ((BatSet.cardinal v)=1)&&acc
+    )
+  m 
+  true
+  
 
 
 let check_LL1 : cfg -> bool
 =fun cfg -> 
   let first_map = find_first cfg in 
-  let _ = print_endline "" in 
-  let _ = print_endline "[*] first map" in 
-  let _ = print_string (FIRST.tostring first_map) in 
 
   let follow_map = find_follow cfg first_map in 
-  let _ = print_endline "" in 
-  let _ = print_endline "[*] follow map" in 
-  let _ = print_string (FOLLOW.tostring follow_map) in 
 
   let parsing_table = construct_parsing_table cfg first_map follow_map in 
-  let _ = print_endline "\n[*] parsing table" in 
-  let _ = print_endline (ParsingTable.tostring parsing_table) in 
 
-  false (* TODO *)
+  map_all parsing_table (* TODO *)
 
 
 let parse : cfg -> symbol list -> bool
-=fun _ _ -> false (* TODO *)
+=fun cfg _ ->
+  let first_map = find_first cfg in 
+
+  let follow_map = find_follow cfg first_map in 
+
+  let _ = construct_parsing_table cfg first_map follow_map in 
+  false 
+  
