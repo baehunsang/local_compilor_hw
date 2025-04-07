@@ -123,51 +123,103 @@ let find_first : cfg->FIRST.t =
     
     loop init_first
 
-    let find_follow: cfg->FIRST.t-> FOLLOW.t = 
-    fun cfg first_map->
-      let (_, _, start_symbol, prods) = cfg in
-    
-      (*initialize followset*)
-      let init_follow = FOLLOW.empty in 
-      let init_follow = FOLLOW.add start_symbol End init_follow in 
-    
-      (*fixed point loop*)
-      let rec loop = 
-        fun follow_map -> 
-          let next = Util.list_fold 
-          (
-            fun (src, dst) acc -> 
-              let len = List.length dst in
-    
-              
-              let rec for_loop i follow =
-                if i >= len then
-    
-                  follow
-                else
-                  let cur_sym = List.nth dst i in
+let find_follow: cfg->FIRST.t-> FOLLOW.t = 
+fun cfg first_map->
+  let (_, _, start_symbol, prods) = cfg in
+
+  (*initialize followset*)
+  let init_follow = FOLLOW.empty in 
+  let init_follow = FOLLOW.add start_symbol End init_follow in 
+
+  (*fixed point loop*)
+  let rec loop = 
+    fun follow_map -> 
+      let next = Util.list_fold 
+      (
+        fun (src, dst) acc -> 
+          let len = List.length dst in
+
+          
+          let rec for_loop i follow =
+            if i >= len then
+
+              follow
+            else
+              let cur_sym = List.nth dst i in
+            
+              match cur_sym with 
+              | N _ -> 
+                let beta = Util.drop (i+1) (dst) in 
                 
-                  match cur_sym with 
-                  | N _ -> 
-                    let beta = Util.drop (i+1) (dst) in 
-                    
-                    let first_beta = first_of_symbols beta first_map in 
-                    let first_beta_wo_e = BatSet.remove Epsilon first_beta in
-                    let next_follow = FOLLOW.add_set cur_sym first_beta_wo_e follow in
-                    let next_follow = 
-                      if BatSet.mem Epsilon first_beta then
-                        FOLLOW.add_set cur_sym (FOLLOW.find src next_follow) next_follow
-                      else 
-                        next_follow in 
-                    for_loop (i+1) next_follow
-                  | _ -> 
-                    for_loop (i+1) follow
-                in 
-              for_loop 0 acc 
-          ) prods follow_map in 
-    
-          if BatMap.equal (BatSet.equal) next follow_map then follow_map else loop next in 
-      loop init_follow
+                let first_beta = first_of_symbols beta first_map in 
+                let first_beta_wo_e = BatSet.remove Epsilon first_beta in
+                let next_follow = FOLLOW.add_set cur_sym first_beta_wo_e follow in
+                let next_follow = 
+                  if BatSet.mem Epsilon first_beta then
+                    FOLLOW.add_set cur_sym (FOLLOW.find src next_follow) next_follow
+                  else 
+                    next_follow in 
+                for_loop (i+1) next_follow
+              | _ -> 
+                for_loop (i+1) follow
+            in 
+          for_loop 0 acc 
+      ) prods follow_map in 
+
+      if BatMap.equal (BatSet.equal) next follow_map then follow_map else loop next in 
+  loop init_follow
+
+let construct_parsing_table: cfg->FIRST.t->FOLLOW.t->ParsingTable.t =
+fun cfg first_map follow_map ->
+  let (_, _, _, prods) = cfg in  
+  (*for prod in prods*)
+  let rec for_prod_in prods ret_table = 
+    match prods with 
+    | [] -> ret_table
+    | prod::next -> 
+      let src, alpha = prod in
+      let first_alpha = first_of_symbols alpha first_map in 
+      
+      (*[1]*)
+      (*for sym in first(alpha)*)
+      let ret_table = 
+        BatSet.fold 
+        (
+          fun sym table -> 
+            match sym with 
+            | T _ -> 
+              ParsingTable.add (src, sym) prod table
+            | _ -> table
+        ) 
+        first_alpha 
+        ret_table in 
+      
+      (*[2]*)
+      let ret_table = 
+        if BatSet.mem Epsilon first_alpha then
+            let follow_src = FOLLOW.find src follow_map in
+            let ret_table =  
+            BatSet.fold 
+            (
+              fun sym table ->
+                match sym with 
+                | T _ -> 
+                  ParsingTable.add (src, sym) prod table
+                | _ -> table
+            ) 
+            follow_src 
+            ret_table in 
+
+            if BatSet.mem End follow_src then 
+              ParsingTable.add (src, End) prod ret_table
+            else
+              ret_table
+        else
+          ret_table in 
+      for_prod_in next ret_table in 
+  for_prod_in prods ParsingTable.empty
+
+
 
 let check_LL1 : cfg -> bool
 =fun cfg -> 
@@ -180,7 +232,13 @@ let check_LL1 : cfg -> bool
   let _ = print_endline "" in 
   let _ = print_endline "[*] follow map" in 
   let _ = print_string (FOLLOW.tostring follow_map) in 
+
+  let parsing_table = construct_parsing_table cfg first_map follow_map in 
+  let _ = print_endline "\n[*] parsing table" in 
+  let _ = print_endline (ParsingTable.tostring parsing_table) in 
+
   false (* TODO *)
+
 
 let parse : cfg -> symbol list -> bool
 =fun _ _ -> false (* TODO *)

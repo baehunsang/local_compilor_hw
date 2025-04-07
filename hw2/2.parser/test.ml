@@ -172,5 +172,68 @@ fun cfg first_map->
       if BatMap.equal (BatSet.equal) next follow_map then follow_map else loop next in 
   loop init_follow
 
-let follow = find_follow cfg1 first_map;;
-let _ = print_string (FOLLOW.tostring follow);;
+let follow_map = find_follow cfg1 first_map;;
+let _ = print_endline "[*] follow map"
+let _ = print_string (FOLLOW.tostring follow_map);;
+
+
+let construct_parsing_table: cfg->FIRST.t->FOLLOW.t->ParsingTable.t =
+fun cfg first_map follow_map ->
+  let (nt, t, st, prods) = cfg in  
+  (*for prod in prods*)
+  let rec for_prod_in prods ret_table = 
+    match prods with 
+    | [] -> ret_table
+    | prod::next -> 
+      let src, alpha = prod in
+      let first_alpha = first_of_symbols alpha first_map in 
+      
+      (*[1]*)
+      (*for sym in first(alpha)*)
+      let ret_table = 
+        BatSet.fold 
+        (
+          fun sym table -> 
+            match sym with 
+            | T _ -> 
+              ParsingTable.add (src, sym) prod table
+            | _ -> table
+        ) 
+        first_alpha 
+        ret_table in 
+      
+      (*[2]*)
+      let ret_table = 
+        if BatSet.mem Epsilon first_alpha then
+            let follow_src = FOLLOW.find src follow_map in
+            let ret_table =  
+            BatSet.fold 
+            (
+              fun sym table ->
+                match sym with 
+                | T _ -> 
+                  ParsingTable.add (src, sym) prod table
+                | _ -> table
+            ) 
+            follow_src 
+            ret_table in 
+
+            if BatSet.mem End follow_src then 
+              ParsingTable.add (src, End) prod ret_table
+            else
+              ret_table
+        else
+          ret_table in 
+      for_prod_in next ret_table in 
+  for_prod_in prods ParsingTable.empty;;
+
+let parsing_table = construct_parsing_table cfg1 first_map follow_map;;
+let _ = print_endline "\n[*] parsing table";;
+let _ = print_endline (ParsingTable.tostring parsing_table);;
+
+
+    
+      
+
+
+      
