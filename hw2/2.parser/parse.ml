@@ -240,11 +240,35 @@ let check_LL1 : cfg -> bool
 
 
 let parse : cfg -> symbol list -> bool
-=fun cfg _ ->
+=fun cfg l ->
+  let (_,_,st,_) = cfg in 
   let first_map = find_first cfg in 
 
   let follow_map = find_follow cfg first_map in 
 
-  let _ = construct_parsing_table cfg first_map follow_map in 
-  false 
+  let parsing_table = construct_parsing_table cfg first_map follow_map in 
+  
+  let rec predictive_parsing parsing_table l stack =
+    match (stack, l) with
+    | (_, [End]) -> true 
+    | (stack_top :: next, a :: tl) ->
+
+        if stack_top = a then 
+          predictive_parsing parsing_table tl next 
+        else
+          begin
+            match stack_top with
+            | T _ -> false
+            | _ ->
+                let prod = ParsingTable.find (stack_top, a) parsing_table in 
+                if BatSet.is_empty prod then
+                  false
+                else
+                  let (_, rhs) = BatSet.choose prod in
+                  let new_stack = rhs @ next in 
+                  predictive_parsing parsing_table l new_stack
+          end
+    | _ -> false in 
+  
+  predictive_parsing parsing_table l [st;End]
   
