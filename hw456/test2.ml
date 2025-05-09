@@ -1,3 +1,12 @@
+#use "topfind";;
+#thread;;
+#require "threads";;
+open Mutex;;
+#require "batteries";;
+#mod_use "./S.ml";;
+#mod_use "./T.ml";;
+#mod_use "./G.ml";;
+open T
 (***********************************)
 (* abstract syntax definition of S *)
 (***********************************)
@@ -31,26 +40,26 @@ and exp  =  NUM of int
           | GE of exp * exp 
           | EQ of exp * exp 
           | AND of exp * exp
-          | OR  of exp * exp
+          | OR  of exp * exp;;
 
 (*************************************)
 (*        interpreter for S          *)
 (*************************************)
 
-exception RuntimeErr of string 
+exception RuntimeErr of string;;
 
 type loc = VAR of string | ADDR of base * offset
 and base = int
-and offset = int
+and offset = int;;
 type value = INT of int | ARRAY of base * size
-and size = int
+and size = int;;
 
 let str_of_loc l = 
   match l with
   | VAR x -> x
-  | ADDR (x,n) -> "(l"^(string_of_int x)^","^(string_of_int n)^")"
+  | ADDR (x,n) -> "(l"^(string_of_int x)^","^(string_of_int n)^")";;
 
-let new_loc = ref 1
+let new_loc = ref 1;;
 module Memory = struct
   type t = (loc, value) BatMap.t
   let empty = BatMap.empty
@@ -67,10 +76,10 @@ module Memory = struct
       bind (VAR x) (ARRAY (!new_loc, size)) (helper 0 m)
     end
 end
+;;
+type mem = Memory.t;;
 
-type mem = Memory.t
-
-let list_fold f l a = List.fold_left (fun a e -> f e a) a l
+let list_fold f l a = List.fold_left (fun a e -> f e a) a l;;
 
 let rec run_block :block -> mem -> mem
 =fun (decls,stmts) m ->
@@ -169,17 +178,17 @@ and eval_lv : lv -> mem -> loc
        | _ -> raise (RuntimeErr ("index must be an integer")))
     | _ -> raise (RuntimeErr (x ^ " must be an array")))
 
-
+        ;;
 let execute : program -> unit
-=fun pgm -> ignore (run_block pgm Memory.empty)          
+=fun pgm -> ignore (run_block pgm Memory.empty)    ;;      
 
 (*************************************)
 (* pretty printer for the S langauge *)
 (*************************************)
 
-let p x = print_string (x)
+let p x = print_string (x);;
 
-let rec p_indent n = if n = 0 then () else (p " "; p_indent (n-1))
+let rec p_indent n = if n = 0 then () else (p " "; p_indent (n-1));;
 
 let rec p_typ t =
   match t with
@@ -246,7 +255,220 @@ and p_block : int -> block -> unit
   p_decls (indent + 1) decls;
   p_stmts (indent + 1) stmts;
   p_indent indent; p "}\n" 
-
+;;
 let pp : program -> unit
-=fun b -> p_block 0 b
+=fun b -> p_block 0 b;;
 
+
+(* 프로그램 전체: decls * stmts *)
+let my_prog =
+  ( 
+    (* decls: 변수 선언부 *)
+    [ (TARR 10, "arr")   (* int[10] arr; *)
+    ; (TINT,   "i")      (* int i; *)
+    ; (TINT,   "j")      (* int j; *)
+    ],
+
+    (* stmts: 문장부 *)
+    [ (* i = 0; *)
+      ASSIGN (ID "i", NUM 0);
+
+      (* j = 0; *)
+      ASSIGN (ID "j", NUM 0);
+
+      (* while (i < 10) { … } *)
+      WHILE (
+        (* 조건: i < 10 *)
+        LT (LV (ID "i"), NUM 10),
+
+        (* 본문: decls = [], stmts = [ arr[i]=i; i=i+1; j=j+1 ] *)
+        BLOCK (
+          [],  (* 이 블록 내부에 추가 선언은 없음 *)
+          [ (* arr[i] = i; *)
+            ASSIGN (
+              ARR ("arr", LV (ID "i")),   (* 좌변: arr[i] *)
+              LV   (ID "i")               (* 우변: i *)
+            );
+            (* i = i + 1; *)
+            ASSIGN (
+              ID "i",
+              ADD (LV (ID "i"), NUM 1)
+            );
+            (* j = j + 1; *)
+            ASSIGN (
+              ID "j",
+              ADD (LV (ID "j"), NUM 1)
+            )
+          ]
+        )
+      );
+
+      (* print(i); *)
+      PRINT (LV (ID "i"))
+    ]
+  );;
+let _ = execute my_prog;;
+
+exception Not_implemented;;
+
+let tmp_index = ref 0;;
+let label_index = ref 1;;
+let new_temp() = tmp_index := !tmp_index + 1; ".t" ^ (string_of_int !tmp_index);;
+let new_label() = label_index := !label_index + 1; !label_index;;
+
+let rec trans_e: exp -> (T.var* T.program) = 
+fun e -> 
+  match e with
+  | NUM n -> 
+    let new_t = new_temp () in 
+    (new_t, [(0 ,COPYC(new_t, n))])
+
+  | LV lv ->
+    (match lv with
+    | ID x -> 
+      let new_t = new_temp () in 
+      (new_t, [(0 ,COPY(new_t, x))])
+
+    | ARR (x, e)-> 
+      let (t1, code) = trans_e e in 
+      let new_t2 = new_temp () in 
+      (new_t2, code@[(0, LOAD(new_t2, (x, t1)))])
+    )
+
+  (*Binary op*)
+  | ADD(e1, e2) -> 
+    let (t1, code1) = trans_e e1 in 
+    let (t2, code2) = trans_e e2 in 
+    let new_t3 = new_temp () in 
+    (new_t3, code1@code2@[(0, ASSIGNV(new_t3, ADD, t1, t2))])
+    
+  | SUB(e1, e2) -> 
+    let (t1, code1) = trans_e e1 in 
+    let (t2, code2) = trans_e e2 in 
+    let new_t3 = new_temp () in 
+    (new_t3, code1@code2@[(0, ASSIGNV(new_t3, SUB, t1, t2))])
+
+  | MUL(e1, e2) -> 
+    let (t1, code1) = trans_e e1 in 
+    let (t2, code2) = trans_e e2 in 
+    let new_t3 = new_temp () in 
+    (new_t3, code1@code2@[(0, ASSIGNV(new_t3, MUL, t1, t2))])
+
+  | DIV(e1, e2) -> 
+    let (t1, code1) = trans_e e1 in 
+    let (t2, code2) = trans_e e2 in 
+    let new_t3 = new_temp () in 
+    (new_t3, code1@code2@[(0, ASSIGNV(new_t3, DIV, t1, t2))])
+
+  | LT(e1, e2) -> 
+    let (t1, code1) = trans_e e1 in 
+    let (t2, code2) = trans_e e2 in 
+    let new_t3 = new_temp () in 
+    (new_t3, code1@code2@[(0, ASSIGNV(new_t3, LT, t1, t2))])
+
+  | LE(e1, e2) -> 
+    let (t1, code1) = trans_e e1 in 
+    let (t2, code2) = trans_e e2 in 
+    let new_t3 = new_temp () in 
+    (new_t3, code1@code2@[(0, ASSIGNV(new_t3, LE, t1, t2))])
+
+  | GT(e1, e2) -> 
+    let (t1, code1) = trans_e e1 in 
+    let (t2, code2) = trans_e e2 in 
+    let new_t3 = new_temp () in 
+    (new_t3, code1@code2@[(0, ASSIGNV(new_t3, GT, t1, t2))])
+
+  | GE(e1, e2) -> 
+    let (t1, code1) = trans_e e1 in 
+    let (t2, code2) = trans_e e2 in 
+    let new_t3 = new_temp () in 
+    (new_t3, code1@code2@[(0, ASSIGNV(new_t3, GE, t1, t2))])
+
+  | EQ(e1, e2) -> 
+    let (t1, code1) = trans_e e1 in 
+    let (t2, code2) = trans_e e2 in 
+    let new_t3 = new_temp () in 
+    (new_t3, code1@code2@[(0, ASSIGNV(new_t3, EQ, t1, t2))])
+
+  | AND(e1, e2) -> 
+    let (t1, code1) = trans_e e1 in 
+    let (t2, code2) = trans_e e2 in 
+    let new_t3 = new_temp () in 
+    (new_t3, code1@code2@[(0, ASSIGNV(new_t3, AND, t1, t2))])
+
+  | OR(e1, e2) -> 
+    let (t1, code1) = trans_e e1 in 
+    let (t2, code2) = trans_e e2 in 
+    let new_t3 = new_temp () in 
+    (new_t3, code1@code2@[(0, ASSIGNV(new_t3, OR, t1, t2))])
+
+  | MINUS(e) -> 
+    let (t1, code1) = trans_e e in 
+    let new_t2 = new_temp () in 
+    (new_t2, code1@[(0, ASSIGNU(new_t2, MINUS, t1))])
+
+  | NOT(e) -> 
+    let (t1, code1) = trans_e e in 
+    let new_t2 = new_temp () in 
+    (new_t2, code1@[(0, ASSIGNU(new_t2, NOT, t1))]);;
+
+let trans_d: decl->T.program = 
+fun (t, id) ->
+  match t with
+  | TINT -> [(0, COPYC(id, 0))]
+  | TARR(n) ->[(0, ALLOC(id, n))];;
+
+let rec trans_s: stmt -> T.program = 
+fun s ->
+  match s with 
+  | ASSIGN(lv, e)->
+    (match lv with
+    | ID x -> 
+      let (t1, code1) = trans_e e in 
+      code1@[(0, COPY(x, t1))]
+
+    | ARR(x,e1)->
+      let (t1, code1) = trans_e e1 in 
+      let (t2, code2) = trans_e e in 
+      code1@code2@[(0, STORE((x, t1), t2))])
+
+  | IF(e, stmt1, stmt2) -> 
+    let (t1, code1) = trans_e e in 
+    let code_t = trans_s stmt1 in 
+    let code_f = trans_s stmt2 in 
+    let l_t = new_label () in 
+    let l_f = new_label () in 
+    let l_x = new_label () in 
+    code1@[(0, CJUMP(t1, l_t))]@[(0, UJUMP l_f)]@[(l_t, SKIP)]@code_t@[(0, UJUMP l_x)]@[(l_f, SKIP)]@code_f@[(0, UJUMP l_x)]@[(l_x, SKIP)]
+    
+
+  | WHILE(e, stmt) -> 
+    let (t1, code1) = trans_e e in 
+    let code_b = trans_s stmt in 
+    let l_e = new_label () in 
+    let l_x = new_label () in 
+    [(l_e, SKIP)]@code1@[(0, CJUMPF(t1, l_x))]@code_b@[(0, UJUMP l_e)]@[(l_x, SKIP)]
+    
+
+  | DOWHILE(stmt, e) -> 
+    (trans_s(stmt))@(trans_s(WHILE(e, stmt)))
+
+  | READ x -> [(0, READ(x))]
+
+  | PRINT e -> 
+    let (t1, code1) = trans_e e in 
+    code1@[(0, WRITE t1)]
+  
+  | BLOCK b -> 
+    trans_b b 
+
+
+and trans_b = fun (d_list, s_list)->
+  let d_code = List.fold_left (fun acc d-> acc@(trans_d d)) [] d_list in 
+  let s_code = List.fold_left (fun acc s-> acc@(trans_s s)) [] s_list in
+  d_code@s_code
+;;
+
+let test_t = (trans_b my_prog)@[(0, HALT)];;
+
+let _ = T.pp test_t;;

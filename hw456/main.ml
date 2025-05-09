@@ -34,7 +34,7 @@ let translate s_pgm =
 	let _ = 
 		G.Cfg.dot cfg; 
 		print_endline "cfg has been saved in cfg.dot" in
-	let _ = print_endline "== translating S to T ==" in 
+	let _ = print_endline "== translating S to T ==" in
 	let t_pgm = Translator.s2t s_pgm in
 	let _ = T.pp t_pgm in
 	  (s_pgm, cfg, t_pgm)
@@ -61,9 +61,8 @@ let main () =
 	|> translate
 	|> analyze
 	|> run_s
-	|> run_g 
+	(*|> run_g*) 
 	|> run_t 
-	|> optimize_t 
-	|> run_t 
+	(*|> optimize_t*) 
 
 let _ = main ()
