@@ -312,17 +312,12 @@ let new_cfg2 =
   new_cfg2;; 
 
 
-let merge_cfg (cfg1 : Cfg.t) (cfg2 : Cfg.t) : Cfg.t =
-  (* 1) cfg1 의 exit, cfg2 의 entry *)
-  let exit1  = Cfg.get_exit  cfg1 in
-  let entry2 = Cfg.get_entry cfg2 in
+let merge_cfg (cfg1 : Cfg.t) (cfg2 : Cfg.t) (n1 : Node.t) (n2 : Node.t) : Cfg.t =
 
-  (* 2) cfg2 의 모든 노드를 cfg1 에 추가 *)
   let g =
     Cfg.add_nodes (Cfg.nodesof cfg2) cfg1
   in
 
-  (* 3) cfg2 의 모든 엣지를 추가 *)
   let g =
     List.fold_left
       (fun acc n ->
@@ -335,7 +330,7 @@ let merge_cfg (cfg1 : Cfg.t) (cfg2 : Cfg.t) : Cfg.t =
       (Cfg.nodesof cfg2)
   in
 
-  (* 4) cfg2 의 loophead 표시도 그대로 복사 *)
+
   let g =
     List.fold_left
       (fun acc n ->
@@ -347,15 +342,198 @@ let merge_cfg (cfg1 : Cfg.t) (cfg2 : Cfg.t) : Cfg.t =
       (Cfg.nodesof cfg2)
   in
 
-  (* 5) 마지막으로 exit1 → entry2 엣지 추가 *)
-  Cfg.add_edge exit1 entry2 g;;
+  Cfg.add_edge n1 n2 g;;
 
 
-let merged_cfg = merge_cfg new_cfg new_cfg2;;
+let cfg_decl :decl-> Cfg.t =
+fun (t, id) ->
+  match t with
+  | TINT -> 
+    let new_cfg = Cfg.empty in 
+    let new_node = Node.create_assign (ID id) (NUM 0) in
+    let new_entry = Node.create_skip () in
+    let new_exit = Node.create_skip () in
+    let new_cfg = Cfg.add_node new_entry new_cfg in 
+    let new_cfg = Cfg.add_node new_exit new_cfg in 
+    let new_cfg = Cfg.add_node new_node new_cfg in 
+    let new_cfg = Cfg.add_edge new_entry new_node new_cfg in 
+    Cfg.add_edge new_node new_exit new_cfg
 
-let _ = Cfg.dot merged_cfg;;
+  | TARR(n) ->
+    let new_cfg = Cfg.empty in 
+    let new_node = Node.create_alloc (id) (n) in
+    let new_entry = Node.create_skip () in
+    let new_exit = Node.create_skip () in
+    let new_cfg = Cfg.add_node new_entry new_cfg in 
+    let new_cfg = Cfg.add_node new_exit new_cfg in 
+    let new_cfg = Cfg.add_node new_node new_cfg in 
+    let new_cfg = Cfg.add_edge new_entry new_node new_cfg in 
+    Cfg.add_edge new_node new_exit new_cfg;;
 
-let _ = execute_cfg merged_cfg;;
+
+let rec cfg_stmt: stmt -> Cfg.t = 
+fun s -> 
+  match s with
+  | ASSIGN(lv, e) -> 
+    (match lv with
+    | ID x -> 
+      let new_cfg = Cfg.empty in 
+      let new_node = Node.create_assign (ID x) (e) in
+      let new_entry = Node.create_skip () in
+      let new_exit = Node.create_skip () in
+      let new_cfg = Cfg.add_node new_node new_cfg in 
+      let new_cfg = Cfg.add_node new_entry new_cfg in 
+      let new_cfg = Cfg.add_node new_exit new_cfg in 
+      let new_cfg = Cfg.add_edge new_entry new_node new_cfg in 
+      Cfg.add_edge new_node new_exit new_cfg
+
+    | ARR (x, e1) -> 
+        let new_cfg = Cfg.empty in 
+        let new_node = Node.create_assign (ARR (x, e1)) (e) in
+        let new_entry = Node.create_skip () in
+        let new_exit = Node.create_skip () in
+        let new_cfg = Cfg.add_node new_node new_cfg in 
+        let new_cfg = Cfg.add_node new_entry new_cfg in 
+        let new_cfg = Cfg.add_node new_exit new_cfg in 
+        let new_cfg = Cfg.add_edge new_entry new_node new_cfg in 
+        Cfg.add_edge new_node new_exit new_cfg
+    )
+  | IF(e, stmt1, stmt2) -> 
+    let new_cfg = Cfg.empty in 
+    let new_entry = Node.create_skip () in
+    let new_exit = Node.create_skip () in
+    let new_cfg = Cfg.add_node new_entry new_cfg in 
+    let n1 = Node.create_skip () in 
+    let assume1 = Node.create_assume e in 
+    let assume2 = Node.create_assume (NOT(e)) in 
+    let cfg_S1 = cfg_stmt stmt1 in 
+    let cfg_S2 = cfg_stmt stmt2 in 
+    let n2 = Node.create_skip () in
+    let new_cfg = Cfg.add_nodes [n1;assume1;assume2;n2] new_cfg in 
+    let new_cfg = Cfg.add_edge new_entry n1 new_cfg in
+    let new_cfg = Cfg.add_edge n1 assume1 new_cfg in
+    let new_cfg = Cfg.add_edge n1 assume2 new_cfg in
+     let _ = print_endline "========= DEBUG POINT1 =========" in
+    let new_cfg = merge_cfg new_cfg cfg_S1 (assume1) (Cfg.get_entry cfg_S1) in
+     let _ = print_endline "========= DEBUG POINT2 =========" in
+    let new_cfg = merge_cfg new_cfg cfg_S2 (assume2) (Cfg.get_entry cfg_S2) in
+
+     let _ = print_endline "========= DEBUG POINT3 =========" in
+    let new_cfg = Cfg.add_edge (Cfg.get_exit cfg_S1) n2 new_cfg in
+
+     let _ = print_endline "========= DEBUG POINT4 =========" in
+    let new_cfg = Cfg.add_edge (Cfg.get_exit cfg_S2) n2 new_cfg in
+    let new_cfg = Cfg.add_node new_exit new_cfg in 
+    Cfg.add_edge n2 new_exit new_cfg
+
+  | WHILE(e, stmt) -> 
+    let new_cfg = Cfg.empty in 
+    let new_entry = Node.create_skip () in
+    let new_exit = Node.create_skip () in
+    let new_cfg = Cfg.add_node new_entry new_cfg in 
+    
+    let n1 = Node.create_skip () in 
+    let assume1 = Node.create_assume e in 
+    let assume2 = Node.create_assume (NOT(e)) in 
+    let cfg_S = cfg_stmt stmt in 
+    let new_cfg = Cfg.add_nodes [n1;assume1;assume2] new_cfg in
+    
+    let new_cfg = Cfg.add_edge new_entry n1 new_cfg in
+    let new_cfg = Cfg.add_edge n1 assume1 new_cfg in
+    let new_cfg = Cfg.add_edge n1 assume2 new_cfg in
+
+     let _ = print_endline "========= DEBUG POINT5 =========" in
+    let new_cfg = merge_cfg new_cfg cfg_S (assume1) (Cfg.get_entry cfg_S) in
+
+     let _ = print_endline "========= DEBUG POINT6 =========" in
+    let new_cfg = Cfg.add_edge (Cfg.get_exit cfg_S) n1 new_cfg in
+    let new_cfg = Cfg.add_node new_exit new_cfg in 
+    Cfg.add_edge assume2 new_exit new_cfg
+
+
+  | DOWHILE(stmt, e) -> 
+    let new_cfg = Cfg.empty in 
+    let new_entry = Node.create_skip () in
+    let new_exit = Node.create_skip () in
+    let new_cfg = Cfg.add_node new_entry new_cfg in 
+
+    let cfg_S = cfg_stmt stmt in 
+    let cfg_while = cfg_stmt (WHILE(e, stmt)) in 
+
+     let _ = print_endline "========= DEBUG POINT7 =========" in
+    let new_cfg = merge_cfg new_cfg cfg_S (new_entry) (Cfg.get_entry cfg_S) in 
+
+     let _ = print_endline "========= DEBUG POINT8 =========" in
+    let new_cfg = merge_cfg new_cfg cfg_while (Cfg.get_exit cfg_S) (Cfg.get_entry cfg_while) in
+    let new_cfg = Cfg.add_node new_exit new_cfg in 
+
+     let _ = print_endline "========= DEBUG POINT9 =========" in
+    Cfg.add_edge (Cfg.get_exit cfg_while) (new_exit) new_cfg  
+
+  | READ x ->
+      let new_cfg = Cfg.empty in 
+      let new_node = Node.create_read x in
+      let new_entry = Node.create_skip () in
+      let new_exit = Node.create_skip () in
+      let new_cfg = Cfg.add_node new_node new_cfg in 
+      let new_cfg = Cfg.add_node new_entry new_cfg in 
+      let new_cfg = Cfg.add_node new_exit new_cfg in 
+      let new_cfg = Cfg.add_edge new_entry new_node new_cfg in 
+      Cfg.add_edge new_node new_exit new_cfg
+  
+  | PRINT e ->
+      let new_cfg = Cfg.empty in 
+      let new_node = Node.create_print e in
+      let new_entry = Node.create_skip () in
+      let new_exit = Node.create_skip () in
+      let new_cfg = Cfg.add_node new_node new_cfg in 
+      let new_cfg = Cfg.add_node new_entry new_cfg in 
+      let new_cfg = Cfg.add_node new_exit new_cfg in 
+      let new_cfg = Cfg.add_edge new_entry new_node new_cfg in 
+      Cfg.add_edge new_node new_exit new_cfg
+
+
+  | BLOCK b ->
+    let new_cfg = Cfg.empty in 
+    let new_entry = Node.create_skip () in
+    let new_exit = Node.create_skip () in
+    let new_cfg = Cfg.add_node new_entry new_cfg in 
+
+    let cfg_block = cfg_b b in 
+
+     let _ = print_endline "========= DEBUG POINT10 =========" in
+    let new_cfg = merge_cfg new_cfg cfg_block (new_entry) (Cfg.get_entry cfg_block) in 
+    let new_cfg = Cfg.add_node new_exit new_cfg in 
+
+     let _ = print_endline "========= DEBUG POINT11 =========" in
+    Cfg.add_edge (Cfg.get_exit cfg_block) (new_exit) new_cfg 
+
+and cfg_b (d_list, s_list) =
+  let entry = Node.create_skip () in
+  let exit = Node.create_skip () in
+  let init_cfg = Cfg.add_node entry Cfg.empty in
+
+  (* declarations *)
+  let d_cfg = List.fold_left (fun acc decl ->
+    let decl_cfg = cfg_decl decl in
+     let _ = print_endline "========= DEBUG POINT12 =========" in
+    merge_cfg acc decl_cfg (Cfg.get_exit acc) (Cfg.get_entry decl_cfg)
+  ) init_cfg d_list in
+
+  (* statements *)
+  let s_cfg = List.fold_left (fun acc stmt ->
+    let stmt_cfg = cfg_stmt stmt in
+     let _ = print_endline "========= DEBUG POINT13 =========" in
+    merge_cfg acc stmt_cfg (Cfg.get_exit acc) (Cfg.get_entry stmt_cfg)
+  ) d_cfg s_list in
+
+  let final_cfg = Cfg.add_node exit s_cfg in
+   let _ = print_endline "========= DEBUG POINT14 =========" in
+  Cfg.add_edge (Cfg.get_exit s_cfg) exit final_cfg
+;;
+
+
+
 
 
 
@@ -365,7 +543,7 @@ let _ = Cfg.dot new_cfg;;
 let _ = execute_cfg new_cfg;;
 *)
 (*====================================================*)
-(*
+
 let my_prog =
   ( 
     (* decls: 변수 선언부 *)
@@ -413,14 +591,7 @@ let my_prog =
     ]
   );;
 
+let test_cfg = cfg_b my_prog;;
+let _ = Cfg.dot (Cfg.remove_unnecessary_skips test_cfg);;
 
-
-let rec cfg stmt = 
-  match stmt with
-  | ASSIGN(lv, e) ->
-    begin
-      match lv with
-      | ID x -> 
-      | ARR(x, e1) ->
-    end
-  | *)
+let _ = execute_cfg test_cfg;;
