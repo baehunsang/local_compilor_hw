@@ -50,15 +50,15 @@ module Interval : Interval = struct
   let from_int n = Range (Int n, Int n)
   let from_bounds i1 i2 = Range (i1, i2)
 
-  let order a b = 
   let le_int (i1:integer) (i2:integer) = 
-    match i1,i2 with
-    | MinusInf, _ -> true
-    | _, MinusInf -> false
-    | _, PlusInf -> true
-    | Int(n1), Int(n2) -> n1 <= n2
-    | PlusInf, _ -> false
-  in 
+     match i1,i2 with
+     | MinusInf, _ -> true
+     | _, MinusInf -> false
+     | _, PlusInf -> true
+     | Int(n1), Int(n2) -> n1 <= n2
+     | PlusInf, _ -> false
+
+  let order a b = 
   match a,b with
   | Bot,_ -> true
   | _,Bot -> false

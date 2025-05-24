@@ -297,7 +297,8 @@ fun s ->
     let new_cfg = Cfg.add_edge new_entry n1 new_cfg in
     let new_cfg = Cfg.add_edge n1 assume1 new_cfg in
     let new_cfg = Cfg.add_edge n1 assume2 new_cfg in
-
+    let new_cfg = Cfg.add_loophead n1 new_cfg in
+     
     let new_cfg = merge_cfg new_cfg cfg_S (assume1) (Cfg.get_entry cfg_S) in
 
     let new_cfg = Cfg.add_edge (Cfg.get_exit cfg_S) n1 new_cfg in

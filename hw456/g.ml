@@ -186,6 +186,10 @@ module Cfg : Cfg = struct
     NodeSet.iter (fun n -> 
       print_endline (Node.to_string n)
     ) g.nodes;
+    print_endline "** loopheads **";
+    NodeSet.iter (fun n -> 
+      print_endline (Node.to_string n)
+    ) g.loopheads;
     print_endline "";
     print_endline "** Edges **";
     NodeMap.iter (fun n succs -> 

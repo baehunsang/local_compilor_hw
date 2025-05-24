@@ -673,16 +673,17 @@ module Interval : Interval = struct
     | Range (i1, i2) -> "[" ^ string_of_integer i1 ^ ", " ^ string_of_integer i2 ^ "]"
   let from_int n = Range (Int n, Int n)
   let from_bounds i1 i2 = Range (i1, i2)
-
-  let order a b = 
-    let le_int (i1:integer) (i2:integer) = 
+  let le_int (i1:integer) (i2:integer) = 
       match i1,i2 with
       | MinusInf, _ -> true
       | _, MinusInf -> false
       | _, PlusInf -> true
       | Int(n1), Int(n2) -> n1 <= n2
       | PlusInf, _ -> false
-    in 
+
+  let min (i1:integer) (i2:integer) =
+    
+  let order a b = 
     match a,b with
     | Bot,_ -> true
     | _,Bot -> false
@@ -821,7 +822,7 @@ module Table : Table = struct
     prerr_endline "") t  
 end;;
 
-(*
+
 let test_l1 = Interval.Range(Interval.Int 1, Interval.Int 1);;
 let test_l2 = Interval.Range(Interval.Int 0, Interval.Int 0);;
 let test_l3 = Interval.Range(Interval.Int 0, Interval.Int 1);;
@@ -830,4 +831,4 @@ let b1 = Interval.order test_l1 test_l1;;
 let b2 = Interval.order test_l2 test_l1;;
 let b3 = Interval.order test_l2 test_l3;;
 let b4 = Interval.order test_l3 test_l2;;
-*)
+
