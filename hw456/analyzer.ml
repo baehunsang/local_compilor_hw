@@ -51,20 +51,38 @@ module Interval : Interval = struct
   let from_bounds i1 i2 = Range (i1, i2)
 
   let le_int (i1:integer) (i2:integer) = 
-     match i1,i2 with
-     | MinusInf, _ -> true
-     | _, MinusInf -> false
-     | _, PlusInf -> true
-     | Int(n1), Int(n2) -> n1 <= n2
-     | PlusInf, _ -> false
+      match i1,i2 with
+      | Int(n1), Int(n2) -> n1 <= n2
+      | MinusInf, Int(_) -> true
+      | _, MinusInf -> false
+      | Int(_), PlusInf -> true
+      | PlusInf, _ -> false
+      | MinusInf, PlusInf -> true
+
+  let min (i1:integer) (i2:integer) = 
+    if (le_int i1 i2) then i1 else i2
+
+  let max (i1:integer) (i2:integer) = 
+    if not(le_int i1 i2) then i1 else i2
 
   let order a b = 
   match a,b with
   | Bot,_ -> true
   | _,Bot -> false
   | Range(l1, u1), Range(l2, u2) -> (le_int l2 l1) && (le_int u1 u2)
-  let join _ _ = raise NotImplemented
-  let meet _ _ = raise NotImplemented
+  let join a b = 
+  match a, b with
+  | Bot, _ -> b
+  | _, Bot -> a
+  | Range(l1, u1), Range(l2, u2)-> Range((min l1 l2), (max u1 u2))
+  let meet a b = 
+    match a, b with
+    | Bot, _ -> Bot
+    | _, Bot -> Bot
+    | Range(l1, u1), Range(l2, u2) ->(
+      if ((le_int l1 l2)&&(le_int l2 u1)) then Range(l2, u1) else
+        (if ((le_int l2 l1)&&(le_int l1 u2)) then Range(l1, u2) else Bot)
+      )
   let widen _ _ = raise NotImplemented
   let narrow _ _ = raise NotImplemented
   let add _ _ = raise NotImplemented

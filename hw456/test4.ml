@@ -675,22 +675,49 @@ module Interval : Interval = struct
   let from_bounds i1 i2 = Range (i1, i2)
   let le_int (i1:integer) (i2:integer) = 
       match i1,i2 with
-      | MinusInf, _ -> true
-      | _, MinusInf -> false
-      | _, PlusInf -> true
       | Int(n1), Int(n2) -> n1 <= n2
+      | MinusInf, Int(_) -> true
+      | _, MinusInf -> false
+      | Int(_), PlusInf -> true
       | PlusInf, _ -> false
+      | MinusInf, PlusInf -> true
 
-  let min (i1:integer) (i2:integer) =
-    
+  let ge_int (i1:integer) (i2:integer) = 
+      match i1,i2 with
+      | Int(n1), Int(n2) -> n1 >= n2
+      | MinusInf, _ -> false
+      | Int(_) , MinusInf -> true
+      | PlusInf, Int(_) -> true
+      | _, PlusInf -> false
+      | PlusInf, MinusInf -> true
+
+  let min (i1:integer) (i2:integer) = 
+    if (le_int i1 i2) then i1 else i2
+
+  let max (i1:integer) (i2:integer) = 
+    if not(le_int i1 i2) then i1 else i2
+
   let order a b = 
     match a,b with
     | Bot,_ -> true
     | _,Bot -> false
     | Range(l1, u1), Range(l2, u2) -> (le_int l2 l1) && (le_int u1 u2)
 
-  let join _ _ = raise NotImplemented
-  let meet _ _ = raise NotImplemented
+  let join a b = 
+    match a, b with
+    | Bot, _ -> b
+    | _, Bot -> a
+    | Range(l1, u1), Range(l2, u2)-> Range((min l1 l2), (max u1 u2))
+
+  let meet a b = 
+    match a, b with
+    | Bot, _ -> Bot
+    | _, Bot -> Bot
+    | Range(l1, u1), Range(l2, u2) ->(
+      if ((le_int l1 l2)&&(le_int l2 u1)) then Range(l2, u1) else
+        (if ((le_int l2 l1)&&(le_int l1 u2)) then Range(l1, u2) else Bot)
+      )
+    
   let widen _ _ = raise NotImplemented
   let narrow _ _ = raise NotImplemented
   let add _ _ = raise NotImplemented
@@ -822,7 +849,7 @@ module Table : Table = struct
     prerr_endline "") t  
 end;;
 
-
+(*
 let test_l1 = Interval.Range(Interval.Int 1, Interval.Int 1);;
 let test_l2 = Interval.Range(Interval.Int 0, Interval.Int 0);;
 let test_l3 = Interval.Range(Interval.Int 0, Interval.Int 1);;
@@ -831,4 +858,23 @@ let b1 = Interval.order test_l1 test_l1;;
 let b2 = Interval.order test_l2 test_l1;;
 let b3 = Interval.order test_l2 test_l3;;
 let b4 = Interval.order test_l3 test_l2;;
+*)
+(*
+let int1 = Interval.Int 12;;
+let int2 = Interval.Int 13;;
+let int3 = Interval.MinusInf;;
+let int4 = Interval.PlusInf;;
+let test1 = Interval.max int1 int2;;
+let test1 = Interval.max int2 int1;;
 
+let test1 = Interval.min int2 int1;;
+let test1 = Interval.min int1 int2;;
+
+let test1 = Interval.min int1 int3;;
+let test1 = Interval.min int4 int3;;
+*)
+(*
+let bount1 = Interval.from_bounds (Int 1) (PlusInf);;
+let bount2 = Interval.from_bounds (Int 6) (Int 6);;
+let test1 = Interval.meet bount1 bount2;;
+*)
