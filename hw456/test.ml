@@ -5,9 +5,10 @@ open Mutex;;
 #require "batteries";;
 #mod_use "./S.ml";;
 #mod_use "./T.ml";;
+#mod_use "./Utils.ml";;
 #mod_use "./G.ml";;
 open S ;;
-
+open Utils ;;
 (***********************************)
 (* abstract syntax definition of T *)
 (***********************************)
