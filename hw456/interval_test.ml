@@ -792,8 +792,42 @@ module Interval : Interval = struct
     | Range(Int n1, PlusInf), Range(Int n3, PlusInf) -> (top)
     | _, _ -> Bot
     
-  let div a b = raise NotImplemented
-  let eq _ _ = raise NotImplemented
+  let div a b =
+    match b with
+    | Bot -> Bot
+    | Range(l, u) -> 
+      if ((le_int (l) (Int 0))&&(le_int (Int 0) (u))) then Bot else 
+        (
+          match a,b with
+          | Range(MinusInf, PlusInf),_ -> top
+          | Range(Int 0, Int 0), _ -> Range(Int 0, Int 0)
+          | Range(Int n1, Int n2), Range(Int n3, Int n4) -> Range(
+            (List.fold_left (fun acc e-> min acc e) (PlusInf) [Int(n1/n3);Int(n1/n4);Int(n2/n3);Int(n2/n4)]), 
+            (List.fold_left (fun acc e-> max acc e) (MinusInf) [Int(n1/n3);Int(n1/n4);Int(n2/n3);Int(n2/n4)]))
+          | Range(MinusInf , Int n2), Range(Int n3 , Int n4) -> (Range(MinusInf, (max (Int(n2/n3)) (Int(n2/n4)))))
+          | Range(Int n1 , PlusInf), Range(Int n3 , Int n4) -> (Range((min (Int (n1/n3)) (Int (n1/n4))), PlusInf))
+          | Range(Int n1 , Int n2), Range(MinusInf , Int n4) -> 
+            Range(
+            (List.fold_left (fun acc e-> min acc e) (PlusInf) [Int(0);Int(n1/n4);Int(n2/n4)]), 
+            (List.fold_left (fun acc e-> max acc e) (MinusInf) [Int(0);Int(n1/n4);Int(n2/n4)]))
+
+          | Range(Int n1 , Int n2), Range(Int n3 , PlusInf) -> Range(
+            (List.fold_left (fun acc e-> min acc e) (PlusInf) [Int(0);Int(n1/n3);Int(n2/n3)]), 
+            (List.fold_left (fun acc e-> max acc e) (MinusInf) [Int(0);Int(n1/n3);Int(n2/n3)]))
+
+          | Range(MinusInf, Int n2), Range(MinusInf, Int n4) -> (top)
+          | Range(MinusInf, Int n2), Range(Int n3, PlusInf) -> (top)
+          | Range(Int n1, PlusInf), Range(MinusInf, Int n4) -> (top)
+          | Range(Int n1, PlusInf), Range(Int n3, PlusInf) -> Range(Int 0, PlusInf)
+
+        )
+  let eq a b = 
+    match a,b with
+    | Range(l1, u1), Range(l2, u2) -> 
+      if ((l1=u1)&&(l2=u2)&&(u1=l2)) then one else (
+        if ((not(ge_int u1 l2))||(not(ge_int u2 l1))) then zero else top
+      )
+    | _, _ -> top 
   let le _ _ = raise NotImplemented
   let lt _ _ = raise NotImplemented
   let ge _ _ = raise NotImplemented
@@ -999,3 +1033,91 @@ let mul10 = Interval.mul   top m1;;  (* top *)
 let mul11 = Interval.mul   m1 top;;  (* top *)
 let mul12 = Interval.mul   top top;; (* top *)
 let mul13 = Interval.mul m7 m9;;
+
+(* 1) 둘 다 유한 양수 구간 *)
+let d1 = Interval.div
+  (Interval.Range (Interval.Int 6,  Interval.Int 12))
+  (Interval.Range (Interval.Int 2,  Interval.Int 3));;
+(* d1 = [min{6/2,6/3,12/2,12/3}, max{…}] = [2, 6] *)
+
+(* 2) 둘 다 유한 음수 구간 *)
+let d2 = Interval.div
+  (Interval.Range (Interval.Int (-12), Interval.Int (-6)))
+  (Interval.Range (Interval.Int (-3),  Interval.Int (-2)));;
+(* d2 = [min{(-12)/(-3),(-12)/(-2),(-6)/(-3),(-6)/(-2)}, max{…}] = [2, 6] *)
+
+(* 3) 분자 양수, 분모 음수 *)
+let d3 = Interval.div
+  (Interval.Range (Interval.Int 6,  Interval.Int 12))
+  (Interval.Range (Interval.Int (-3), Interval.Int (-2)));;
+(* d3 = [min{6/(-3),6/(-2),12/(-3),12/(-2)}, max{…}] = [-6, -2] *)
+
+(* 4) 분자 음수, 분모 양수 *)
+let d4 = Interval.div
+  (Interval.Range (Interval.Int (-12), Interval.Int (-6)))
+  (Interval.Range (Interval.Int 2,   Interval.Int 3));;
+(* d4 = [min{(-12)/2,(-12)/3,(-6)/2,(-6)/3}, max{…}] = [-6, -2] *)
+
+(* 5) 분모 구간에 0 포함 *)
+let d5 = Interval.div
+  (Interval.Range (Interval.Int 1,   Interval.Int 10))
+  (Interval.Range (Interval.Int (-1), Interval.Int 1));;
+(* d5 = 분모에 0 포함 ⇒ bot *)
+
+(* 6) 분자가 무한, 분모 유한 양수 *)
+let d6 = Interval.div
+  (Interval.Range (Interval.MinusInf, Interval.PlusInf))
+  (Interval.Range (Interval.Int 2,      Interval.Int 5));;
+(* d6 = [(-oo)/5, (+oo)/2] = [-oo, +oo] *)
+
+(* 7) 분모가 무한 *)
+let d7 = Interval.div
+  (Interval.Range (Interval.Int 1,       Interval.Int 10))
+  (Interval.Range (Interval.MinusInf,  Interval.PlusInf));;
+(* d7 = bot *)
+
+(* 8) 둘 다 무한 *)
+let d8 = Interval.div
+  (Interval.Range (Interval.MinusInf, Interval.PlusInf))
+  (Interval.Range (Interval.MinusInf, Interval.PlusInf));;
+(* d8 = bot *)
+
+let d9 = Interval.div
+  (Interval.Range (Interval.Int 6,   Interval.Int 12))
+  (Interval.Range (Interval.MinusInf, Interval.Int (-3)));;
+   (*  = [ -4, 0 ] *)
+
+(* Case B: b ≥ 3, with a spanning negative to positive *)
+let d10 = Interval.div
+  (Interval.Range (Interval.Int (-6), Interval.Int 12))
+  (Interval.Range (Interval.Int 3,    Interval.PlusInf));;
+(* d10= 
+     = [ -2, 4 ] *)
+
+(* Case C: a ≥ 5, b ≥ 6 *)
+let d11 = Interval.div
+  (Interval.Range (Interval.Int 5,  Interval.PlusInf))
+  (Interval.Range (Interval.Int 6,  Interval.PlusInf));;
+(* d11= 
+     = [ min{ 0,   0,   1,    0   } , max{ 0, 0, 1, 0 } ]
+     = [ 0, oo ] *)
+
+let d12 = Interval.div
+  (Interval.Range (Interval.Int 5,  Interval.PlusInf))
+  (Interval.Range (Interval.MinusInf,  Interval.Int (-1)));;
+(*top*)
+
+
+let e1 = Interval.from_int 2;;
+let e2 = Interval.from_int 2;;
+let e3 = Interval.Range(Interval.Int 3, Interval.PlusInf);;
+
+let e4 = Interval.Range(Interval.Int 3, Interval.Int 5);;
+let e5 = Interval.Range(Interval.Int 5, Interval.Int 6);;
+let e6 = Interval.Range(Interval.Int 6, Interval.Int 7);;
+let eq1 = Interval.eq e1 e2;; (*t*)
+let eq1 = Interval.eq e2 e3;; (*f*)
+let eq1 = Interval.eq e4 e5;; (*T*)
+let eq1 = Interval.eq e4 e6;; (*f*)
+let eq1 = Interval.eq e6 e4;; (*f*)
+let eq1 = Interval.eq e6 e6;; (*T*)

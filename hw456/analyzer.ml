@@ -164,8 +164,40 @@ module Interval : Interval = struct
     | Range(Int _, PlusInf), Range(Int _, PlusInf) -> (top)
     | _, _ -> Bot
 
-  let div _ _ = raise NotImplemented
-  let eq _ _ = raise NotImplemented
+  let div a b =
+  match b with
+  | Bot -> Bot
+  | Range(l, u) -> 
+    if ((le_int (l) (Int 0))&&(le_int (Int 0) (u))) then Bot else 
+      (
+        match a,b with
+        | Range(MinusInf, PlusInf),_ -> top
+        | Range(Int 0, Int 0), _ -> Range(Int 0, Int 0)
+        | Range(Int n1, Int n2), Range(Int n3, Int n4) -> Range(
+          (List.fold_left (fun acc e-> min acc e) (PlusInf) [Int(n1/n3);Int(n1/n4);Int(n2/n3);Int(n2/n4)]), 
+          (List.fold_left (fun acc e-> max acc e) (MinusInf) [Int(n1/n3);Int(n1/n4);Int(n2/n3);Int(n2/n4)]))
+        | Range(MinusInf , Int n2), Range(Int n3 , Int n4) -> (Range(MinusInf, (max (Int(n2/n3)) (Int(n2/n4)))))
+        | Range(Int n1 , PlusInf), Range(Int n3 , Int n4) -> (Range((min (Int (n1/n3)) (Int (n1/n4))), PlusInf))
+        | Range(Int n1 , Int n2), Range(MinusInf , Int n4) -> 
+          Range(
+          (List.fold_left (fun acc e-> min acc e) (PlusInf) [Int(0);Int(n1/n4);Int(n2/n4)]), 
+          (List.fold_left (fun acc e-> max acc e) (MinusInf) [Int(0);Int(n1/n4);Int(n2/n4)]))
+        | Range(Int n1 , Int n2), Range(Int n3 , PlusInf) -> Range(
+          (List.fold_left (fun acc e-> min acc e) (PlusInf) [Int(0);Int(n1/n3);Int(n2/n3)]), 
+          (List.fold_left (fun acc e-> max acc e) (MinusInf) [Int(0);Int(n1/n3);Int(n2/n3)]))
+        | Range(MinusInf, Int _), Range(MinusInf, Int _) -> (top)
+        | Range(MinusInf, Int _), Range(Int _, PlusInf) -> (top)
+        | Range(Int _, PlusInf), Range(MinusInf, Int _) -> (top)
+        | Range(Int _, PlusInf), Range(Int _, PlusInf) -> Range(Int 0, PlusInf)
+        | _, _ -> Bot
+      )
+  let eq a b = 
+    match a,b with
+    | Range(l1, u1), Range(l2, u2) -> 
+      if ((l1=u1)&&(l2=u2)&&(u1=l2)) then one else (
+        if ((not(ge_int u1 l2))||(not(ge_int u2 l1))) then zero else top
+      )
+    | _, _ -> top 
   let le _ _ = raise NotImplemented
   let lt _ _ = raise NotImplemented
   let ge _ _ = raise NotImplemented
