@@ -59,6 +59,15 @@ module Interval : Interval = struct
       | PlusInf, _ -> false
       | MinusInf, PlusInf -> true
 
+  let ge_int (i1:integer) (i2:integer) = 
+     match i1,i2 with
+     | Int(n1), Int(n2) -> n1 >= n2
+     | MinusInf, _ -> false
+     | Int(_) , MinusInf -> true
+     | PlusInf, Int(_) -> true
+     | _, PlusInf -> false
+     | PlusInf, MinusInf -> true
+
   let min (i1:integer) (i2:integer) = 
     if (le_int i1 i2) then i1 else i2
 
@@ -83,11 +92,78 @@ module Interval : Interval = struct
       if ((le_int l1 l2)&&(le_int l2 u1)) then Range(l2, u1) else
         (if ((le_int l2 l1)&&(le_int l1 u2)) then Range(l1, u2) else Bot)
       )
-  let widen _ _ = raise NotImplemented
-  let narrow _ _ = raise NotImplemented
-  let add _ _ = raise NotImplemented
-  let mul _ _ = raise NotImplemented
-  let sub _ _ = raise NotImplemented
+  let widen a b =
+    match a, b with
+    | Bot, _ -> b
+    | _, Bot -> a
+    | Range(l1, u1), Range(l2, u2) -> 
+      Range(
+        (if not(le_int l1 l2) then MinusInf else l1),
+        (if not(ge_int u1 u2) then PlusInf else u1)
+      ) 
+
+  let narrow a b = 
+    match a, b with
+    | Bot, _ -> Bot
+    | _, Bot -> Bot
+    | Range(l1, u1), Range(l2, u2) ->
+      Range(
+        (if l1=MinusInf then l2 else l1),
+        (if u1=PlusInf then u2 else u1)
+      ) 
+
+  let add a b = 
+    match a, b with
+    | Range (MinusInf, PlusInf), _ -> (top)
+    | _, Range (MinusInf, PlusInf) -> (top)
+    | Range(Int n1, Int n2), Range(Int n3, Int n4) -> Range(Int(n1 + n3), Int(n2+n4))
+    | Range(MinusInf , Int n2), Range(Int _ , Int n4) -> Range(MinusInf, Int(n2+n4))
+    | Range(Int n1 , PlusInf), Range(Int n3 , Int _) -> Range(Int(n1+n3), PlusInf)
+    | Range(Int _, Int n2), Range(MinusInf , Int n4) -> Range(MinusInf, Int(n2+n4))
+    | Range(Int n1 , Int _), Range(Int n3 , PlusInf) -> Range(Int(n1+n3), PlusInf)
+    | Range(MinusInf, Int n2), Range(MinusInf, Int n4) -> Range(MinusInf, Int(n2+n4))
+    | Range(MinusInf, Int _), Range(Int _, PlusInf) -> (top)
+    | Range(Int _, PlusInf), Range(MinusInf, Int _) -> (top)
+    | Range(Int n1, PlusInf), Range(Int n3, PlusInf) -> (Range(Int(n1+n3), PlusInf))
+    | _, _ -> Bot
+      
+  let mul a b = 
+    match a, b with
+    | Range (MinusInf, PlusInf), _ -> (top)
+    | _, Range (MinusInf, PlusInf) -> (top)
+    | Range(Int 0, Int 0), _ -> Range(Int 0, Int 0)
+    | _, Range(Int 0, Int 0) -> Range(Int 0, Int 0)
+    | Range(Int n1, Int n2), Range(Int n3, Int n4) -> Range(
+      (List.fold_left (fun acc e-> min acc e) (PlusInf) [Int(n1*n3);Int(n1*n4);Int(n2*n3);Int(n2*n4)]), 
+      (List.fold_left (fun acc e-> max acc e) (MinusInf) [Int(n1*n3);Int(n1*n4);Int(n2*n3);Int(n2*n4)]))
+
+    | Range(MinusInf , Int n2), Range(Int n3 , Int n4) -> (Range(MinusInf, (max (Int(n2*n3)) (Int(n2*n4)))))
+    | Range(Int n1 , PlusInf), Range(Int n3 , Int n4) -> (Range((min (Int (n1*n3)) (Int (n1*n4))), PlusInf))
+    | Range(Int n1 , Int n2), Range(MinusInf , Int n4) -> (Range(MinusInf, (max (Int (n1*n4)) (Int (n2*n4)))))
+    | Range(Int n1 , Int n2), Range(Int n3 , PlusInf) -> (Range((min (Int (n1*n3)) (Int (n2*n3))), PlusInf))
+
+    | Range(MinusInf, Int _), Range(MinusInf, Int _) -> (top)
+    | Range(MinusInf, Int _), Range(Int _, PlusInf) -> (top)
+    | Range(Int _, PlusInf), Range(MinusInf, Int _) -> (top)
+    | Range(Int n1, PlusInf), Range(Int n3, PlusInf) -> (Range(Int(n1*n3), PlusInf))
+    | _, _ -> Bot
+
+
+  let sub a b = 
+    match a, b with
+    | Range (MinusInf, PlusInf), _ -> (top)
+    | _, Range (MinusInf, PlusInf) -> (top)
+    | Range(Int n1, Int n2), Range(Int n3, Int n4) -> (Range(Int(n1 - n4), Int(n2-n3)))
+    | Range(MinusInf , Int n2), Range(Int n3 , Int _) -> (Range(MinusInf, Int(n2-n3)))
+    | Range(Int n1 , PlusInf), Range(Int _ , Int n4) -> (Range(Int(n1-n4), PlusInf))
+    | Range(Int n1, Int _), Range(MinusInf , Int n4) -> (Range(Int(n1-n4), PlusInf))
+    | Range(Int _ , Int n2), Range(Int n3 , PlusInf) -> (Range(MinusInf, Int(n2-n3)))
+    | Range(MinusInf, Int _), Range(MinusInf, Int _) -> (top)
+    | Range(MinusInf, Int n2), Range(Int n3, PlusInf) -> (Range(MinusInf, Int(n2-n3)))
+    | Range(Int n1, PlusInf), Range(MinusInf, Int n4) -> (Range(Int(n1-n4), PlusInf))
+    | Range(Int _, PlusInf), Range(Int _, PlusInf) -> (top)
+    | _, _ -> Bot
+
   let div _ _ = raise NotImplemented
   let eq _ _ = raise NotImplemented
   let le _ _ = raise NotImplemented

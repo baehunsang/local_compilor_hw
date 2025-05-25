@@ -918,6 +918,84 @@ module Table : Table = struct
     prerr_endline "") t  
 end;;
 
-let b1 = Interval.from_bounds (MinusInf) (Int 7);;
-let b2 = Interval.from_bounds (MinusInf) (Int 5);;
-let test = Interval.sub b2 b1;;
+(* ─── Addition tests ─────────────────────────────────────────────────────────── *)
+
+let a1    = Interval.Range (Interval.Int 1, Interval.Int 2);;
+let a2    = Interval.Range (Interval.Int 3, Interval.Int 4);;
+let add1  = Interval.add   a1 a2;;   (* [1+3, 2+4]       = [4, 6] *)
+
+let a3    = Interval.Range (Interval.MinusInf, Interval.Int 5);;
+let add2  = Interval.add   a3 a1;;   (* [-oo, 5+2]       = [-oo, 7] *)
+
+let a4    = Interval.Range (Interval.Int 2, Interval.PlusInf);;
+let add3  = Interval.add   a4 a1;;   (* [2+1, +oo]       = [3, +oo] *)
+
+let a5    = Interval.Range (Interval.MinusInf, Interval.Int 3);;
+let add4  = Interval.add   a1 a5;;   (* [-oo, 2+3]       = [-oo, 5] *)
+
+let a6    = Interval.Range (Interval.Int 4, Interval.PlusInf);;
+let add5  = Interval.add   a1 a6;;   (* [1+4, +oo]       = [5, +oo] *)
+
+let add6  = Interval.add   a3 a6;;   (* one -inf, one +inf → top = [-oo, +oo] *)
+
+let top   = Interval.top;;
+let add7  = Interval.add   top a1;;  (* any + top = top *)
+let add8  = Interval.add   a1 top;;  (* top + any = top *)
+
+(* ─── Subtraction tests ──────────────────────────────────────────────────────── *)
+
+let s1    = Interval.Range (Interval.Int 5, Interval.Int 10);;
+let s2    = Interval.Range (Interval.Int 2, Interval.Int 3);;
+let sub1  = Interval.sub   s1 s2;;   (* [5−3, 10−2]     = [2, 8]  *)
+
+let s3    = Interval.Range (Interval.MinusInf, Interval.Int 7);;
+let sub2  = Interval.sub   s3 s1;;   (* [−oo, 7−5]      = [-oo, 2] *)
+
+let s4    = Interval.Range (Interval.Int 4, Interval.PlusInf);;
+let sub3  = Interval.sub   s4 s2;;   (* [4−3, +oo]      = [1, +oo] *)
+
+let s5    = Interval.Range (Interval.MinusInf, Interval.Int 3);;
+let sub4  = Interval.sub   s1 s5;;   (* [5−3, +oo]      = [2, +oo] *)
+
+let s6    = Interval.Range (Interval.Int 6, Interval.PlusInf);;
+let sub5  = Interval.sub   s1 s6;;   (* [−oo, 10−6]     = [-oo, 4] *)
+
+let sub6  = Interval.sub   s3 s6;;   (* [−oo, 7−6]      = [-oo, 1] *)
+let sub7  = Interval.sub   s4 s5;;   (* [4−3, +oo]      = [1, +oo] *)
+
+let sub8  = Interval.sub   s3 s5;;   (* both -inf → top = [-oo,+oo] *)
+
+let sub9  = Interval.sub   top s1;;  (* top - any = top *)
+let sub10 = Interval.sub   s1 top;;  (* any - top = top *)
+
+(* ─── Multiplication tests ──────────────────────────────────────────────────── *)
+
+let m1    = Interval.Range (Interval.Int 2, Interval.Int 3);;
+let m2    = Interval.Range (Interval.Int 4, Interval.Int 5);;
+let m9 = Interval.from_int 0;;
+let mul1  = Interval.mul   m1 m2;;   (* [min{2·4,2·5,3·4,3·5}, max{…}] = [8, 15] *)
+
+let m3    = Interval.Range (Interval.MinusInf, Interval.Int (-2));;
+let mul2  = Interval.mul   m3 m2;;   (* [-oo, max{(-2)·4,(-2)·5}]         = [-oo, -8] *)
+
+let m4    = Interval.Range (Interval.Int 3, Interval.PlusInf);;
+let mul3  = Interval.mul   m1 m4;;   (* [min{2·3,2·∞,3·3,3·∞}=6, +oo]     = [6, +oo] *)
+
+let m5    = Interval.Range (Interval.MinusInf, Interval.Int 6);;
+let mul4  = Interval.mul   m1 m5;;   (* [-oo, max{2·6,3·6}]             = [-oo, 18] *)
+
+let m6    = Interval.Range (Interval.Int (-1), Interval.PlusInf);;
+let mul5  = Interval.mul   m1 m6;;  (*[-3, oo]*)
+
+let mul6  = Interval.mul   m3 m4;;   (* one -inf × one +inf → top *)
+let mul7  = Interval.mul   m4 m5;;   (* top because mixes inf bounds *)
+let mul8  = Interval.mul   m5 m4;;   (* top as well *)
+
+let m7    = Interval.Range (Interval.Int 7, Interval.PlusInf);;
+let m8    = Interval.Range (Interval.Int 2, Interval.PlusInf);;
+let mul9  = Interval.mul   m7 m8;;   (* [7·2, +oo]                      = [14, +oo] *)
+
+let mul10 = Interval.mul   top m1;;  (* top *)
+let mul11 = Interval.mul   m1 top;;  (* top *)
+let mul12 = Interval.mul   top top;; (* top *)
+let mul13 = Interval.mul m7 m9;;
