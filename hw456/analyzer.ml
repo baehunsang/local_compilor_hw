@@ -361,6 +361,50 @@ module Table : Table = struct
     prerr_endline "") t  
 end
 
+let abs_eval :S.exp->AbsMem.t->AbsVal.t
+=fun _ _ ->
+  raise NotImplemented
+  (*match e with
+  | NUM n -> INT n
+  | LV lv -> Memory.lookup (eval_lv lv m) m
+  | ADD (e1,e2) -> INT ((eval_int e1 m) + (eval_int e2 m))
+  | SUB (e1,e2) -> INT ((eval_int e1 m) - (eval_int e2 m))
+  | MUL (e1,e2) -> INT ((eval_int e1 m) * (eval_int e2 m))
+  | DIV (e1,e2) -> 
+    begin 
+      let divisor = eval_int e2 m in 
+        if divisor = 0 then raise (RuntimeErr "Divide by zero")
+        else INT ((eval_int e1 m) / divisor)
+    end 
+  | MINUS e -> INT (-(eval_int e m))
+  | NOT e -> 
+    (match eval_int e m with
+    | 0 -> INT 1
+    | _ -> INT 0)
+  | LT (e1,e2) -> if eval_int e1 m <  eval_int e2 m then INT 1 else INT 0
+  | LE (e1,e2) -> if eval_int e1 m <= eval_int e2 m then INT 1 else INT 0
+  | GT (e1,e2) -> if eval_int e1 m >  eval_int e2 m then INT 1 else INT 0
+  | GE (e1,e2) -> if eval_int e1 m >= eval_int e2 m then INT 1 else INT 0
+  | EQ (e1,e2) -> if eval_int e1 m =  eval_int e2 m then INT 1 else INT 0
+  | AND (e1,e2) -> 
+    (match eval_int e1 m, eval_int e2 m with
+    |0,_ 
+    |_,0 -> INT 0
+    |_,_ -> INT 1)
+  | OR (e1,e2) ->
+    (match eval_int e1 m, eval_int e2 m with
+    |0,0 -> INT 0
+    |_,_ -> INT 1)
+*)
+and abs_eval_lv : S.lv->AbsMem.t->AbsLoc.t BatSet.t
+=fun lv m ->
+  match lv with
+  | ID x -> BatSet.singleton (AbsLoc.Var x)
+  | ARR(x, _) -> 
+    let _, arr_val = AbsMem.find (AbsLoc.Var x) m in 
+    let allocsites, _ = arr_val in 
+    BatSet.fold (fun elt acc -> BatSet.add (AbsLoc.Allocsite elt) acc) allocsites BatSet.empty
+
 let fixpoint : Cfg.t -> Table.t
 =fun _ -> Table.empty
 

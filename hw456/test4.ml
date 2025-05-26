@@ -620,7 +620,7 @@ let tc1 = (
 ]
 )
 
-let test_cfg = cfg_b my_prog;;
+let test_cfg = cfg_b tc1;;
 let nodes = Cfg.print test_cfg;;
 let _ = Cfg.dot (Cfg.remove_unnecessary_skips test_cfg);;
 
@@ -819,7 +819,7 @@ module Interval : Interval = struct
           | Range(MinusInf, Int n2), Range(Int n3, PlusInf) -> (top)
           | Range(Int n1, PlusInf), Range(MinusInf, Int n4) -> (top)
           | Range(Int n1, PlusInf), Range(Int n3, PlusInf) -> Range(Int 0, PlusInf)
-
+          | _, _ -> Bot
         )
   let eq a b = 
     match a,b with
@@ -990,7 +990,60 @@ module Table : Table = struct
     AbsMem.print m; 
     prerr_endline "") t  
 end;;
+(*---------------------------- Abs Eval test  ----------------------------------*)
 
-let b1 = Interval.from_bounds (MinusInf) (Int 7);;
-let b2 = Interval.from_bounds (MinusInf) (Int 5);;
-let test = Interval.sub b2 b1;;
+let new_allocsite : unit -> int =
+  let id =  ref 0 in 
+    fun _ -> (id := !id + 1; !id);;
+
+let _ = Cfg.print test_cfg;;
+
+
+let new_arr = AbsArray.create (new_allocsite ()) (1000);;
+
+(*Initialize memory*)
+let test_mem =
+  let test_mem = AbsMem.empty in 
+  let test_mem = AbsMem.add (Var "i") (Range(Int 0, Int 0), AbsArray.bot) test_mem in 
+  let test_mem = AbsMem.add (Var "arr") (Interval.bot, new_arr) test_mem in 
+  let allocsites = AbsArray.get_allocsites new_arr in
+  BatSet.fold (fun e acc -> AbsMem.add (Allocsite (e)) (Range(Int 0, Int 0), AbsArray.bot) acc) allocsites test_mem;;
+
+let _ = AbsMem.print test_mem;;
+
+
+let rec abs_eval : exp->AbsMem.t->AbsVal.t
+=fun e m ->
+  match e with
+  | NUM n -> AbsVal.from_itv (Interval.from_int n)
+  | LV lv -> ()
+  | ADD(e1, e2) -> ()
+  | SUB(e1, e2) -> ()
+  | MUL(e1, e2) -> ()
+  | DIV(e1, e2) -> ()
+  | MINUS e -> ()
+  | NOT e -> ()
+  | LT(e1, e2) -> ()
+  | LE(e1, e2) -> ()
+  | GT(e1, e2) -> ()
+  | GE(e1, e2) -> ()
+  | EQ(e1, e2) -> ()
+  | AND(e1, e2) -> ()
+  | OR(e1, e2) -> ()
+
+
+and abs_eval_lv : lv->AbsMem.t->AbsLoc.t BatSet.t
+=fun lv m ->
+  match lv with
+  | ID x -> BatSet.singleton (AbsLoc.Var x)
+  | ARR(x, e) -> 
+    let var_val, arr_val = AbsMem.find (AbsLoc.Var x) m in 
+    let allocsites, size = arr_val in 
+    BatSet.fold (fun elt acc -> BatSet.add (AbsLoc.Allocsite elt) acc) allocsites BatSet.empty;;
+
+(* lv eval test*)
+let test1 = abs_eval_lv (ARR("arr", NUM 10)) test_mem;;
+let _ = BatSet.fold (fun elt acc -> print_endline (AbsLoc.to_string elt)) test1 ();;
+
+let test1 = abs_eval_lv (ID "i") test_mem;;
+let _ = BatSet.fold (fun elt acc -> print_endline (AbsLoc.to_string elt)) test1 ();;
