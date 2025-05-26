@@ -1,6 +1,7 @@
 open G 
 
 exception NotImplemented
+exception DivByZero
 
 module type Interval = sig
   type integer = PlusInf | MinusInf | Int of int 
@@ -127,25 +128,27 @@ module Interval : Interval = struct
     | Range(Int n1, PlusInf), Range(Int n3, PlusInf) -> (Range(Int(n1+n3), PlusInf))
     | _, _ -> Bot
       
+  let mul_int i1 i2 = 
+    match i1, i2 with
+    | PlusInf, Int n -> if n > 0 then PlusInf else (if n=0 then Int 0 else MinusInf)
+    | Int n, PlusInf -> if n > 0 then PlusInf else (if n=0 then Int 0 else MinusInf)
+    | MinusInf, Int n -> if n > 0 then MinusInf else (if n=0 then Int 0 else PlusInf)
+    | Int n, MinusInf -> if n > 0 then MinusInf else (if n=0 then Int 0 else PlusInf)
+    | PlusInf, MinusInf -> MinusInf
+    | MinusInf, PlusInf -> MinusInf
+    | PlusInf, PlusInf -> PlusInf
+    | MinusInf, MinusInf -> PlusInf
+    | Int n1, Int n2 -> Int (n1*n2)
+
   let mul a b = 
     match a, b with
     | Range (MinusInf, PlusInf), _ -> (top)
     | _, Range (MinusInf, PlusInf) -> (top)
     | Range(Int 0, Int 0), _ -> Range(Int 0, Int 0)
     | _, Range(Int 0, Int 0) -> Range(Int 0, Int 0)
-    | Range(Int n1, Int n2), Range(Int n3, Int n4) -> Range(
-      (List.fold_left (fun acc e-> min acc e) (PlusInf) [Int(n1*n3);Int(n1*n4);Int(n2*n3);Int(n2*n4)]), 
-      (List.fold_left (fun acc e-> max acc e) (MinusInf) [Int(n1*n3);Int(n1*n4);Int(n2*n3);Int(n2*n4)]))
-
-    | Range(MinusInf , Int n2), Range(Int n3 , Int n4) -> (Range(MinusInf, (max (Int(n2*n3)) (Int(n2*n4)))))
-    | Range(Int n1 , PlusInf), Range(Int n3 , Int n4) -> (Range((min (Int (n1*n3)) (Int (n1*n4))), PlusInf))
-    | Range(Int n1 , Int n2), Range(MinusInf , Int n4) -> (Range(MinusInf, (max (Int (n1*n4)) (Int (n2*n4)))))
-    | Range(Int n1 , Int n2), Range(Int n3 , PlusInf) -> (Range((min (Int (n1*n3)) (Int (n2*n3))), PlusInf))
-
-    | Range(MinusInf, Int _), Range(MinusInf, Int _) -> (top)
-    | Range(MinusInf, Int _), Range(Int _, PlusInf) -> (top)
-    | Range(Int _, PlusInf), Range(MinusInf, Int _) -> (top)
-    | Range(Int n1, PlusInf), Range(Int n3, PlusInf) -> (Range(Int(n1*n3), PlusInf))
+    | Range(n1, n2), Range(n3, n4) -> Range(
+      (List.fold_left (fun acc e-> min acc e) (PlusInf) [(mul_int n1 n3);(mul_int n1 n4);(mul_int n2 n3);(mul_int n2 n4)]), 
+      (List.fold_left (fun acc e-> max acc e) (MinusInf) [(mul_int n1 n3);(mul_int n1 n4);(mul_int n2 n3);(mul_int n2 n4)]))
     | _, _ -> Bot
 
 
@@ -164,33 +167,33 @@ module Interval : Interval = struct
     | Range(Int _, PlusInf), Range(Int _, PlusInf) -> (top)
     | _, _ -> Bot
 
+  let div_int i1 i2 = 
+    match i1, i2 with
+    | PlusInf, Int n -> if n > 0 then PlusInf else (if n=0 then raise DivByZero else MinusInf)
+    | Int n, PlusInf -> if n > 0 then Int 0 else (if n=0 then Int 0 else Int 0)
+    | MinusInf, Int n -> if n > 0 then MinusInf else (if n=0 then raise DivByZero else PlusInf)
+    | Int n, MinusInf -> if n > 0 then Int 0 else (if n=0 then Int 0 else Int 0)
+    | PlusInf, MinusInf -> MinusInf
+    | MinusInf, PlusInf -> MinusInf
+    | PlusInf, PlusInf -> PlusInf
+    | MinusInf, MinusInf -> PlusInf
+    | Int n1, Int n2 -> Int (n1/n2)
+
+
   let div a b =
-  match b with
-  | Bot -> Bot
-  | Range(l, u) -> 
-    if ((le_int (l) (Int 0))&&(le_int (Int 0) (u))) then Bot else 
-      (
-        match a,b with
-        | Range(MinusInf, PlusInf),_ -> top
-        | Range(Int 0, Int 0), _ -> Range(Int 0, Int 0)
-        | Range(Int n1, Int n2), Range(Int n3, Int n4) -> Range(
-          (List.fold_left (fun acc e-> min acc e) (PlusInf) [Int(n1/n3);Int(n1/n4);Int(n2/n3);Int(n2/n4)]), 
-          (List.fold_left (fun acc e-> max acc e) (MinusInf) [Int(n1/n3);Int(n1/n4);Int(n2/n3);Int(n2/n4)]))
-        | Range(MinusInf , Int n2), Range(Int n3 , Int n4) -> (Range(MinusInf, (max (Int(n2/n3)) (Int(n2/n4)))))
-        | Range(Int n1 , PlusInf), Range(Int n3 , Int n4) -> (Range((min (Int (n1/n3)) (Int (n1/n4))), PlusInf))
-        | Range(Int n1 , Int n2), Range(MinusInf , Int n4) -> 
-          Range(
-          (List.fold_left (fun acc e-> min acc e) (PlusInf) [Int(0);Int(n1/n4);Int(n2/n4)]), 
-          (List.fold_left (fun acc e-> max acc e) (MinusInf) [Int(0);Int(n1/n4);Int(n2/n4)]))
-        | Range(Int n1 , Int n2), Range(Int n3 , PlusInf) -> Range(
-          (List.fold_left (fun acc e-> min acc e) (PlusInf) [Int(0);Int(n1/n3);Int(n2/n3)]), 
-          (List.fold_left (fun acc e-> max acc e) (MinusInf) [Int(0);Int(n1/n3);Int(n2/n3)]))
-        | Range(MinusInf, Int _), Range(MinusInf, Int _) -> (top)
-        | Range(MinusInf, Int _), Range(Int _, PlusInf) -> (top)
-        | Range(Int _, PlusInf), Range(MinusInf, Int _) -> (top)
-        | Range(Int _, PlusInf), Range(Int _, PlusInf) -> Range(Int 0, PlusInf)
-        | _, _ -> Bot
-      )
+    match b with
+    | Bot -> Bot
+    | Range(l, u) -> 
+      if ((le_int (l) (Int 0))&&(le_int (Int 0) (u))) then Bot else 
+        (
+          match a,b with
+          | Range(MinusInf, PlusInf),_ -> top
+          | Range(Int 0, Int 0), _ -> Range(Int 0, Int 0)
+          | Range(n1, n2), Range(n3, n4) -> Range(
+            (List.fold_left (fun acc e-> min acc e) (PlusInf) [(div_int n1 n3);(div_int n1 n4);(div_int n2 n3);(div_int n2 n4)]), 
+            (List.fold_left (fun acc e-> max acc e) (MinusInf) [(div_int n1 n3);(div_int n1 n4);(div_int n2 n3);(div_int n2 n4)]))
+          | _, _ -> Bot
+        )
   let eq a b = 
     match a,b with
     | Range(l1, u1), Range(l2, u2) -> 

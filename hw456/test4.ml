@@ -753,25 +753,27 @@ module Interval : Interval = struct
     | Range(Int n1, PlusInf), Range(Int n3, PlusInf) -> (Range(Int(n1+n3), PlusInf))
     | _, _ -> Bot
       
+  let mul_int i1 i2 = 
+    match i1, i2 with
+    | PlusInf, Int n -> if n > 0 then PlusInf else (if n=0 then Int 0 else MinusInf)
+    | Int n, PlusInf -> if n > 0 then PlusInf else (if n=0 then Int 0 else MinusInf)
+    | MinusInf, Int n -> if n > 0 then MinusInf else (if n=0 then Int 0 else PlusInf)
+    | Int n, MinusInf -> if n > 0 then MinusInf else (if n=0 then Int 0 else PlusInf)
+    | PlusInf, MinusInf -> MinusInf
+    | MinusInf, PlusInf -> MinusInf
+    | PlusInf, PlusInf -> PlusInf
+    | MinusInf, MinusInf -> PlusInf
+    | Int n1, Int n2 -> Int (n1*n2)
+
   let mul a b = 
     match a, b with
     | Range (MinusInf, PlusInf), _ -> (top)
     | _, Range (MinusInf, PlusInf) -> (top)
     | Range(Int 0, Int 0), _ -> Range(Int 0, Int 0)
     | _, Range(Int 0, Int 0) -> Range(Int 0, Int 0)
-    | Range(Int n1, Int n2), Range(Int n3, Int n4) -> Range(
-      (List.fold_left (fun acc e-> min acc e) (PlusInf) [Int(n1*n3);Int(n1*n4);Int(n2*n3);Int(n2*n4)]), 
-      (List.fold_left (fun acc e-> max acc e) (MinusInf) [Int(n1*n3);Int(n1*n4);Int(n2*n3);Int(n2*n4)]))
-
-    | Range(MinusInf , Int n2), Range(Int n3 , Int n4) -> (Range(MinusInf, (max (Int(n2*n3)) (Int(n2*n4)))))
-    | Range(Int n1 , PlusInf), Range(Int n3 , Int n4) -> (Range((min (Int (n1*n3)) (Int (n1*n4))), PlusInf))
-    | Range(Int n1 , Int n2), Range(MinusInf , Int n4) -> (Range(MinusInf, (max (Int (n1*n4)) (Int (n2*n4)))))
-    | Range(Int n1 , Int n2), Range(Int n3 , PlusInf) -> (Range((min (Int (n1*n3)) (Int (n2*n3))), PlusInf))
-
-    | Range(MinusInf, Int _), Range(MinusInf, Int _) -> (top)
-    | Range(MinusInf, Int _), Range(Int _, PlusInf) -> (top)
-    | Range(Int _, PlusInf), Range(MinusInf, Int _) -> (top)
-    | Range(Int n1, PlusInf), Range(Int n3, PlusInf) -> (Range(Int(n1*n3), PlusInf))
+    | Range(n1, n2), Range(n3, n4) -> Range(
+      (List.fold_left (fun acc e-> min acc e) (PlusInf) [(mul_int n1 n3);(mul_int n1 n4);(mul_int n2 n3);(mul_int n2 n4)]), 
+      (List.fold_left (fun acc e-> max acc e) (MinusInf) [(mul_int n1 n3);(mul_int n1 n4);(mul_int n2 n3);(mul_int n2 n4)]))
     | _, _ -> Bot
 
 
@@ -791,7 +793,20 @@ module Interval : Interval = struct
     | Range(Int n1, PlusInf), Range(MinusInf, Int n4) -> (Range(Int(n1-n4), PlusInf))
     | Range(Int n1, PlusInf), Range(Int n3, PlusInf) -> (top)
     | _, _ -> Bot
-    
+
+  let div_int i1 i2 = 
+    match i1, i2 with
+    | PlusInf, Int n -> if n > 0 then PlusInf else (if n=0 then raise(RuntimeErr "divide by zero") else MinusInf)
+    | Int n, PlusInf -> if n > 0 then Int 0 else (if n=0 then Int 0 else Int 0)
+    | MinusInf, Int n -> if n > 0 then MinusInf else (if n=0 then raise(RuntimeErr "divide by zero") else PlusInf)
+    | Int n, MinusInf -> if n > 0 then Int 0 else (if n=0 then Int 0 else Int 0)
+    | PlusInf, MinusInf -> MinusInf
+    | MinusInf, PlusInf -> MinusInf
+    | PlusInf, PlusInf -> PlusInf
+    | MinusInf, MinusInf -> PlusInf
+    | Int n1, Int n2 -> Int (n1/n2)
+
+
   let div a b =
     match b with
     | Bot -> Bot
@@ -801,24 +816,9 @@ module Interval : Interval = struct
           match a,b with
           | Range(MinusInf, PlusInf),_ -> top
           | Range(Int 0, Int 0), _ -> Range(Int 0, Int 0)
-          | Range(Int n1, Int n2), Range(Int n3, Int n4) -> Range(
-            (List.fold_left (fun acc e-> min acc e) (PlusInf) [Int(n1/n3);Int(n1/n4);Int(n2/n3);Int(n2/n4)]), 
-            (List.fold_left (fun acc e-> max acc e) (MinusInf) [Int(n1/n3);Int(n1/n4);Int(n2/n3);Int(n2/n4)]))
-          | Range(MinusInf , Int n2), Range(Int n3 , Int n4) -> (Range(MinusInf, (max (Int(n2/n3)) (Int(n2/n4)))))
-          | Range(Int n1 , PlusInf), Range(Int n3 , Int n4) -> (Range((min (Int (n1/n3)) (Int (n1/n4))), PlusInf))
-          | Range(Int n1 , Int n2), Range(MinusInf , Int n4) -> 
-            Range(
-            (List.fold_left (fun acc e-> min acc e) (PlusInf) [Int(0);Int(n1/n4);Int(n2/n4)]), 
-            (List.fold_left (fun acc e-> max acc e) (MinusInf) [Int(0);Int(n1/n4);Int(n2/n4)]))
-
-          | Range(Int n1 , Int n2), Range(Int n3 , PlusInf) -> Range(
-            (List.fold_left (fun acc e-> min acc e) (PlusInf) [Int(0);Int(n1/n3);Int(n2/n3)]), 
-            (List.fold_left (fun acc e-> max acc e) (MinusInf) [Int(0);Int(n1/n3);Int(n2/n3)]))
-
-          | Range(MinusInf, Int n2), Range(MinusInf, Int n4) -> (top)
-          | Range(MinusInf, Int n2), Range(Int n3, PlusInf) -> (top)
-          | Range(Int n1, PlusInf), Range(MinusInf, Int n4) -> (top)
-          | Range(Int n1, PlusInf), Range(Int n3, PlusInf) -> Range(Int 0, PlusInf)
+          | Range(n1, n2), Range(n3, n4) -> Range(
+            (List.fold_left (fun acc e-> min acc e) (PlusInf) [(div_int n1 n3);(div_int n1 n4);(div_int n2 n3);(div_int n2 n4)]), 
+            (List.fold_left (fun acc e-> max acc e) (MinusInf) [(div_int n1 n3);(div_int n1 n4);(div_int n2 n3);(div_int n2 n4)]))
           | _, _ -> Bot
         )
   let eq a b = 
@@ -996,15 +996,17 @@ let new_allocsite : unit -> int =
   let id =  ref 0 in 
     fun _ -> (id := !id + 1; !id);;
 
+(*Test cfg*)  
 let _ = Cfg.print test_cfg;;
-
 
 let new_arr = AbsArray.create (new_allocsite ()) (1000);;
 
 (*Initialize memory*)
 let test_mem =
   let test_mem = AbsMem.empty in 
-  let test_mem = AbsMem.add (Var "i") (Range(Int 0, Int 0), AbsArray.bot) test_mem in 
+  let test_mem = AbsMem.add (Var "i") (Range(Int 1, PlusInf), AbsArray.bot) test_mem in 
+  let test_mem = AbsMem.add (Var "j") (Range(MinusInf, Int (-4)), AbsArray.bot) test_mem in 
+    let test_mem = AbsMem.add (Var "k") (Range(Int (-3), Int (-4)), AbsArray.bot) test_mem in 
   let test_mem = AbsMem.add (Var "arr") (Interval.bot, new_arr) test_mem in 
   let allocsites = AbsArray.get_allocsites new_arr in
   BatSet.fold (fun e acc -> AbsMem.add (Allocsite (e)) (Range(Int 0, Int 0), AbsArray.bot) acc) allocsites test_mem;;
@@ -1016,20 +1018,22 @@ let rec abs_eval : exp->AbsMem.t->AbsVal.t
 =fun e m ->
   match e with
   | NUM n -> AbsVal.from_itv (Interval.from_int n)
-  | LV lv -> ()
-  | ADD(e1, e2) -> ()
-  | SUB(e1, e2) -> ()
-  | MUL(e1, e2) -> ()
-  | DIV(e1, e2) -> ()
-  | MINUS e -> ()
-  | NOT e -> ()
-  | LT(e1, e2) -> ()
-  | LE(e1, e2) -> ()
-  | GT(e1, e2) -> ()
-  | GE(e1, e2) -> ()
-  | EQ(e1, e2) -> ()
-  | AND(e1, e2) -> ()
-  | OR(e1, e2) -> ()
+  | LV lv -> 
+    let locations = abs_eval_lv lv m in 
+    BatSet.fold (fun elt acc -> AbsVal.join (AbsMem.find elt m ) acc) locations AbsVal.bot
+  | ADD(e1, e2) -> AbsVal.add (abs_eval e1 m) (abs_eval e2 m)
+  | SUB(e1, e2) -> AbsVal.sub (abs_eval e1 m) (abs_eval e2 m)
+  | MUL(e1, e2) -> AbsVal.mul (abs_eval e1 m) (abs_eval e2 m)
+  | DIV(e1, e2) -> AbsVal.div (abs_eval e1 m) (abs_eval e2 m)
+  | MINUS e -> AbsVal.mul (abs_eval e m) (AbsVal.from_itv (Interval.from_int (-1)))
+  | NOT e -> raise NotImplemented
+  | LT(e1, e2) -> raise NotImplemented
+  | LE(e1, e2) -> raise NotImplemented
+  | GT(e1, e2) -> raise NotImplemented
+  | GE(e1, e2) -> raise NotImplemented
+  | EQ(e1, e2) -> raise NotImplemented
+  | AND(e1, e2) -> raise NotImplemented
+  | OR(e1, e2) -> raise NotImplemented
 
 
 and abs_eval_lv : lv->AbsMem.t->AbsLoc.t BatSet.t
@@ -1045,5 +1049,18 @@ and abs_eval_lv : lv->AbsMem.t->AbsLoc.t BatSet.t
 let test1 = abs_eval_lv (ARR("arr", NUM 10)) test_mem;;
 let _ = BatSet.fold (fun elt acc -> print_endline (AbsLoc.to_string elt)) test1 ();;
 
-let test1 = abs_eval_lv (ID "i") test_mem;;
-let _ = BatSet.fold (fun elt acc -> print_endline (AbsLoc.to_string elt)) test1 ();;
+let test2 = abs_eval_lv (ID "i") test_mem;;
+let _ = BatSet.fold (fun elt acc -> print_endline (AbsLoc.to_string elt)) test2 ();;
+
+(* eval test*)
+let test3 = abs_eval (LV(ID "i")) test_mem;;
+let test4 = abs_eval (LV(ARR("i", NUM 10))) test_mem;;
+let test5 = abs_eval (LV(ARR("arr", NUM 10))) test_mem;;
+
+
+let test6 = abs_eval (MINUS(LV(ID "i"))) test_mem;;
+let test7 = abs_eval (MINUS(LV(ID "j"))) test_mem;;
+
+let test8 = abs_eval (DIV(LV(ID "i"), NUM 0)) test_mem;;
+let test9 = abs_eval (DIV(LV(ID "i"), LV(ID "j"))) test_mem;;
+let test10 = abs_eval (MUL(LV(ID "i"), LV(ID "k"))) test_mem;;
