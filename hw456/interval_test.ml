@@ -828,13 +828,52 @@ module Interval : Interval = struct
         if ((not(ge_int u1 l2))||(not(ge_int u2 l1))) then zero else top
       )
     | _, _ -> top 
-  let le _ _ = raise NotImplemented
-  let lt _ _ = raise NotImplemented
-  let ge _ _ = raise NotImplemented
-  let gt _ _ = raise NotImplemented
-  let not _ = raise NotImplemented
-  let band _ _ = raise NotImplemented
-  let bor _ _ = raise NotImplemented
+
+  let le a b = 
+    match a, b with
+    | Range(l1, u1), Range(l2, u2) -> 
+      if (le_int u1 l2) then one else 
+        (if not(le_int l1 u2) then zero else top)
+    | _, _ -> top
+
+  let lt a b = 
+    match a, b with
+    | Range(l1, u1), Range(l2, u2) ->
+      if not(ge_int u1 l2) then one else 
+        (if (ge_int l1 u2) then zero else top)
+    | _, _ -> top
+
+  let ge a b = 
+    match a, b with
+    | Range(l1, u1), Range(l2, u2) -> 
+      if (le_int u2 l1) then one else 
+        (if not(le_int l2 u1) then zero else top)
+    | _, _ -> top
+
+  let gt a b = 
+    match a, b with
+    | Range(l1, u1), Range(l2, u2) -> 
+      if not(ge_int u2 l1) then one else 
+        (if (ge_int l2 u1) then zero else top)
+    | _,_ -> top
+  let not b =
+    match b with
+    | Range(Int 0, Int 0) -> one
+    | Range(Int 1, Int 1) -> zero
+    | _ -> top 
+
+  let band a b = 
+    match a, b with
+    | Range(Int 0, Int 0), _ -> zero
+    | _, Range(Int 0, Int 0) -> zero
+    | Range(Int 1, Int 1), Range(Int 1, Int 1) -> one 
+    | _, _ -> top
+  let bor a b = 
+    match a, b with
+    | Range(Int 0, Int 0), Range(Int 0, Int 0) -> zero 
+    | Range(Int 1, Int 1), _ -> one 
+    | _, Range(Int 1, Int 1) -> one 
+    | _, _ -> top
 end;;
 
 type allocsite = int;;
@@ -1121,3 +1160,146 @@ let eq1 = Interval.eq e4 e5;; (*T*)
 let eq1 = Interval.eq e4 e6;; (*f*)
 let eq1 = Interval.eq e6 e4;; (*f*)
 let eq1 = Interval.eq e6 e6;; (*T*)
+
+
+let test_eq1 = Interval.eq
+  (Interval.Range (Interval.Int 1, Interval.Int 2))
+  (Interval.Range (Interval.Int 1, Interval.Int 2));;
+(* eq1 = T *)
+
+let eq2 = Interval.eq
+  (Interval.Range (Interval.Int 1, Interval.Int 2))
+  (Interval.Range (Interval.Int 3, Interval.Int 4));;
+(* eq2 = false  -- no overlap *)
+
+let eq3 = Interval.eq
+  (Interval.Range (Interval.Int 1, Interval.Int 3))
+  (Interval.Range (Interval.Int 2, Interval.Int 4));;
+(* eq3 = ⊤     -- partial overlap but not identical *)
+
+
+(* ─── Non-strict Comparison tests ([l₁,u₁] ≤̂ [l₂,u₂]) ───────────────────────── *)
+
+let le1 = Interval.le
+  (Interval.Range (Interval.Int 1, Interval.Int 2))
+  (Interval.Range (Interval.Int 3, Interval.Int 4));;
+(* le1 = true  -- 2 ≤ 3 *)
+
+let le2 = Interval.le
+  (Interval.Range (Interval.Int 1, Interval.Int 4))
+  (Interval.Range (Interval.Int 2, Interval.Int 5));;
+(* le2 = ⊤   -- neither 4 ≤ 2 nor 1 > 5 *)
+
+let le3 = Interval.le
+  (Interval.Range (Interval.Int 3, Interval.Int 5))
+  (Interval.Range (Interval.Int 1, Interval.Int 2));;
+(* le3 = false -- 3 > 2 *)
+
+
+(* ─── Strict Comparison tests ([l₁,u₁] <̂ [l₂,u₂]) ────────────────────────── *)
+
+let lt1 = Interval.lt
+  (Interval.Range (Interval.Int 1, Interval.Int 2))
+  (Interval.Range (Interval.Int 3, Interval.Int 4));;
+(* lt1 = true  -- 2 < 3 *)
+
+let lt2 = Interval.lt
+  (Interval.Range (Interval.Int 2, Interval.Int 4))
+  (Interval.Range (Interval.Int 4, Interval.Int 6));;
+(* lt2 = ⊤   -- neither 4 < 4 nor 2 ≥ 6 *)
+
+let lt3 = Interval.lt
+  (Interval.Range (Interval.Int 4, Interval.Int 6))
+  (Interval.Range (Interval.Int 1, Interval.Int 3));;
+(* lt3 = false -- 4 ≥ 3 *)
+
+
+(* ─── Non-strict Reverse Comparison tests ([l₁,u₁] ≥̂ [l₂,u₂]) ──────────────── *)
+
+let ge1 = Interval.ge
+  (Interval.Range (Interval.Int 3, Interval.Int 5))
+  (Interval.Range (Interval.Int 1, Interval.Int 2));;
+(* ge1 = true  -- 3 ≥ 2 *)
+
+let ge2 = Interval.ge
+  (Interval.Range (Interval.Int 2, Interval.Int 4))
+  (Interval.Range (Interval.Int 3, Interval.Int 6));;
+(* ge2 = ⊤   -- neither 4 ≤ 3 nor 2 > 6 *)
+
+let ge3 = Interval.ge
+  (Interval.Range (Interval.Int 1, Interval.Int 2))
+  (Interval.Range (Interval.Int 3, Interval.Int 4));;
+(* ge3 = false -- 1 > 4 is false, so “no overlap above” *)
+
+
+(* ─── Strict Reverse Comparison tests ([l₁,u₁] >̂ [l₂,u₂]) ──────────────────── *)
+
+let gt1 = Interval.gt
+  (Interval.Range (Interval.Int 3, Interval.Int 5))
+  (Interval.Range (Interval.Int 1, Interval.Int 2));;
+(* gt1 = true  -- 3 > 2 *)
+
+let gt2 = Interval.gt
+  (Interval.Range (Interval.Int 2, Interval.Int 6))
+  (Interval.Range (Interval.Int 1, Interval.Int 5));;
+(* gt2 = ⊤   -- neither 6 ≤ 1 nor 2 > 5 *)
+
+let gt3 = Interval.gt
+  (Interval.Range (Interval.Int 1, Interval.Int 3))
+  (Interval.Range (Interval.Int 4, Interval.Int 6));;
+(* gt3 = false -- 1 > 6 is false, disjoint in the other direction *)  
+
+
+(* ─── abstract Boolean constants via eq ─────────────────────────────────────── *)
+
+let true_abs  = Interval.eq
+  (Interval.Range (Interval.Int 1, Interval.Int 1))
+  (Interval.Range (Interval.Int 1, Interval.Int 1));;
+(* true_abs  = true *)
+
+let false_abs = Interval.eq
+  (Interval.Range (Interval.Int 1, Interval.Int 1))
+  (Interval.Range (Interval.Int 2, Interval.Int 2));;
+(* false_abs = false *)
+
+let top_abs   = Interval.eq
+  (Interval.Range (Interval.Int 1, Interval.Int 2))
+  (Interval.Range (Interval.Int 2, Interval.Int 3));;
+(* top_abs   = ⊤ *)
+
+
+(* ─── band (∧) tests ───────────────────────────────────────────────────────── *)
+
+let b1 = Interval.band true_abs  true_abs;;   (* true  ∧ true  = true  *)
+let b2 = Interval.band true_abs  false_abs;;  (* true  ∧ false = false *)
+let b3 = Interval.band false_abs true_abs;;   (* false ∧ true  = false *)
+let b4 = Interval.band false_abs false_abs;;  (* false ∧ false = false *)
+
+let b5 = Interval.band true_abs  top_abs;;    (* true  ∧ ⊤     = ⊤     *)
+let b6 = Interval.band top_abs   true_abs;;   (* ⊤     ∧ true  = ⊤     *)
+let b7 = Interval.band false_abs top_abs;;    (* false ∧ ⊤     = false *)
+let b8 = Interval.band top_abs   false_abs;;  (* ⊤     ∧ false = false *)
+
+let b9 = Interval.band top_abs   top_abs;;    (* ⊤     ∧ ⊤     = ⊤     *)
+
+
+(* ─── bor (∨) tests ────────────────────────────────────────────────────────── *)
+
+let o1 = Interval.bor true_abs  true_abs;;    (* true  ∨ true  = true  *)
+let o2 = Interval.bor true_abs  false_abs;;   (* true  ∨ false = true  *)
+let o3 = Interval.bor false_abs true_abs;;    (* false ∨ true  = true  *)
+let o4 = Interval.bor false_abs false_abs;;   (* false ∨ false = false *)
+
+let o5 = Interval.bor true_abs  top_abs;;     (* true  ∨ ⊤     = true  *)
+let o6 = Interval.bor top_abs   true_abs;;    (* ⊤     ∨ true  = true  *)
+let o7 = Interval.bor false_abs top_abs;;     (* false ∨ ⊤     = ⊤     *)
+let o8 = Interval.bor top_abs   false_abs;;   (* ⊤     ∨ false = ⊤     *)
+
+let o9 = Interval.bor top_abs   top_abs;;     (* ⊤     ∨ ⊤     = ⊤     *)
+
+
+(* ─── not (¬) tests ────────────────────────────────────────────────────────── *)
+
+let n1 = Interval.not true_abs;;   (* ¬true  = false *)
+let n2 = Interval.not false_abs;;  (* ¬false = true  *)
+let n3 = Interval.not top_abs;;    (* ¬⊤     = ⊤     *)

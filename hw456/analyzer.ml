@@ -198,13 +198,52 @@ module Interval : Interval = struct
         if ((not(ge_int u1 l2))||(not(ge_int u2 l1))) then zero else top
       )
     | _, _ -> top 
-  let le _ _ = raise NotImplemented
-  let lt _ _ = raise NotImplemented
-  let ge _ _ = raise NotImplemented
-  let gt _ _ = raise NotImplemented
-  let not _ = raise NotImplemented
-  let band _ _ = raise NotImplemented
-  let bor _ _ = raise NotImplemented
+
+  let le a b = 
+    match a, b with
+    | Range(l1, u1), Range(l2, u2) -> 
+      if (le_int u1 l2) then one else 
+        (if not(le_int l1 u2) then zero else top)
+    | _, _ -> top
+
+  let lt a b = 
+    match a, b with
+    | Range(l1, u1), Range(l2, u2) ->
+      if not(ge_int u1 l2) then one else 
+        (if (ge_int l1 u2) then zero else top)
+    | _, _ -> top
+
+  let ge a b = 
+    match a, b with
+    | Range(l1, u1), Range(l2, u2) -> 
+      if (le_int u2 l1) then one else 
+        (if not(le_int l2 u1) then zero else top)
+    | _, _ -> top
+
+  let gt a b = 
+    match a, b with
+    | Range(l1, u1), Range(l2, u2) -> 
+      if not(ge_int u2 l1) then one else 
+        (if (ge_int l2 u1) then zero else top)
+    | _,_ -> top
+  let not b =
+    match b with
+    | Range(Int 0, Int 0) -> one
+    | Range(Int 1, Int 1) -> zero
+    | _ -> top 
+
+  let band a b = 
+    match a, b with
+    | Range(Int 0, Int 0), _ -> zero
+    | _, Range(Int 0, Int 0) -> zero
+    | Range(Int 1, Int 1), Range(Int 1, Int 1) -> one 
+    | _, _ -> top
+  let bor a b = 
+    match a, b with
+    | Range(Int 0, Int 0), Range(Int 0, Int 0) -> zero 
+    | Range(Int 1, Int 1), _ -> one 
+    | _, Range(Int 1, Int 1) -> one 
+    | _, _ -> top
 end
 
 type allocsite = int 
