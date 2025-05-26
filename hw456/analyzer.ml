@@ -364,41 +364,28 @@ module Table : Table = struct
     prerr_endline "") t  
 end
 
-let abs_eval :S.exp->AbsMem.t->AbsVal.t
-=fun _ _ ->
-  raise NotImplemented
-  (*match e with
-  | NUM n -> INT n
-  | LV lv -> Memory.lookup (eval_lv lv m) m
-  | ADD (e1,e2) -> INT ((eval_int e1 m) + (eval_int e2 m))
-  | SUB (e1,e2) -> INT ((eval_int e1 m) - (eval_int e2 m))
-  | MUL (e1,e2) -> INT ((eval_int e1 m) * (eval_int e2 m))
-  | DIV (e1,e2) -> 
-    begin 
-      let divisor = eval_int e2 m in 
-        if divisor = 0 then raise (RuntimeErr "Divide by zero")
-        else INT ((eval_int e1 m) / divisor)
-    end 
-  | MINUS e -> INT (-(eval_int e m))
-  | NOT e -> 
-    (match eval_int e m with
-    | 0 -> INT 1
-    | _ -> INT 0)
-  | LT (e1,e2) -> if eval_int e1 m <  eval_int e2 m then INT 1 else INT 0
-  | LE (e1,e2) -> if eval_int e1 m <= eval_int e2 m then INT 1 else INT 0
-  | GT (e1,e2) -> if eval_int e1 m >  eval_int e2 m then INT 1 else INT 0
-  | GE (e1,e2) -> if eval_int e1 m >= eval_int e2 m then INT 1 else INT 0
-  | EQ (e1,e2) -> if eval_int e1 m =  eval_int e2 m then INT 1 else INT 0
-  | AND (e1,e2) -> 
-    (match eval_int e1 m, eval_int e2 m with
-    |0,_ 
-    |_,0 -> INT 0
-    |_,_ -> INT 1)
-  | OR (e1,e2) ->
-    (match eval_int e1 m, eval_int e2 m with
-    |0,0 -> INT 0
-    |_,_ -> INT 1)
-*)
+let rec abs_eval : S.exp->AbsMem.t->AbsVal.t
+=fun e m ->
+  match e with
+  | NUM n -> AbsVal.from_itv (Interval.from_int n)
+  | LV lv -> 
+    let locations = abs_eval_lv lv m in 
+    BatSet.fold (fun elt acc -> AbsVal.join (AbsMem.find elt m ) acc) locations AbsVal.bot
+  | ADD(e1, e2) -> AbsVal.add (abs_eval e1 m) (abs_eval e2 m)
+  | SUB(e1, e2) -> AbsVal.sub (abs_eval e1 m) (abs_eval e2 m)
+  | MUL(e1, e2) -> AbsVal.mul (abs_eval e1 m) (abs_eval e2 m)
+  | DIV(e1, e2) -> AbsVal.div (abs_eval e1 m) (abs_eval e2 m)
+  | MINUS e -> AbsVal.mul (abs_eval e m) (AbsVal.from_itv (Interval.from_int (-1)))
+  | NOT e -> AbsVal.not (abs_eval e m)
+  | LT(e1, e2) -> AbsVal.lt (abs_eval e1 m) (abs_eval e2 m)
+  | LE(e1, e2) -> AbsVal.le (abs_eval e1 m) (abs_eval e2 m)
+  | GT(e1, e2) -> AbsVal.gt (abs_eval e1 m) (abs_eval e2 m)
+  | GE(e1, e2) -> AbsVal.ge (abs_eval e1 m) (abs_eval e2 m)
+  | EQ(e1, e2) -> AbsVal.eq (abs_eval e1 m) (abs_eval e2 m)
+  | AND(e1, e2) -> AbsVal.band (abs_eval e1 m) (abs_eval e2 m)
+  | OR(e1, e2) -> AbsVal.bor (abs_eval e1 m) (abs_eval e2 m)
+
+
 and abs_eval_lv : S.lv->AbsMem.t->AbsLoc.t BatSet.t
 =fun lv m ->
   match lv with
@@ -407,6 +394,7 @@ and abs_eval_lv : S.lv->AbsMem.t->AbsLoc.t BatSet.t
     let _, arr_val = AbsMem.find (AbsLoc.Var x) m in 
     let allocsites, _ = arr_val in 
     BatSet.fold (fun elt acc -> BatSet.add (AbsLoc.Allocsite elt) acc) allocsites BatSet.empty
+
 
 let fixpoint : Cfg.t -> Table.t
 =fun _ -> Table.empty

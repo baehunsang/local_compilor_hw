@@ -1045,3 +1045,94 @@ and abs_eval_lv : lv->AbsMem.t->AbsLoc.t BatSet.t
     let var_val, arr_val = AbsMem.find (AbsLoc.Var x) m in 
     let allocsites, size = arr_val in 
     BatSet.fold (fun elt acc -> BatSet.add (AbsLoc.Allocsite elt) acc) allocsites BatSet.empty;;
+
+(* lv eval test*)
+let test1 = abs_eval_lv (ARR("arr", NUM 10)) test_mem;;
+let _ = BatSet.fold (fun elt acc -> print_endline (AbsLoc.to_string elt)) test1 ();;
+
+let test2 = abs_eval_lv (ID "i") test_mem;;
+let _ = BatSet.fold (fun elt acc -> print_endline (AbsLoc.to_string elt)) test2 ();;
+
+(* eval test*)
+let test3 = abs_eval (LV(ID "i")) test_mem;;
+let test4 = abs_eval (LV(ARR("i", NUM 10))) test_mem;;
+let test5 = abs_eval (LV(ARR("arr", NUM 10))) test_mem;;
+
+
+let test6 = abs_eval (MINUS(LV(ID "i"))) test_mem;;
+let test7 = abs_eval (MINUS(LV(ID "j"))) test_mem;;
+
+let test8 = abs_eval (DIV(LV(ID "i"), NUM 0)) test_mem;;
+let test9 = abs_eval (DIV(LV(ID "i"), LV(ID "j"))) test_mem;;
+let test10 = abs_eval (MUL(LV(ID "i"), LV(ID "k"))) test_mem;;
+
+(* ─── NUM ─────────────────────────────────────────────────────────────────── *)
+
+let te_num = abs_eval (NUM 42) test_mem;;  
+(* te_num = (Interval.Range (Interval.Int 42, Interval.Int 42), AbsArray.bot) *)
+
+(* ─── LV ──────────────────────────────────────────────────────────────────── *)
+
+let te_lv_i   = abs_eval (LV (ID "i")) test_mem;;  
+(* te_lv_i   = (Interval.Range (Interval.Int 0, Interval.PlusInf), AbsArray.bot) *)
+
+let te_lv_arr = abs_eval (LV (ARR ("arr", NUM 10))) test_mem;;  
+(* te_lv_arr = ([0,0]) *)
+
+(* ─── ADD ──────────────────────────────────────────────────────────────────── *)
+
+let te_add = abs_eval (ADD (LV (ID "i"), NUM 5)) test_mem;;  
+(* te_add = ([0,+∞] + [5,5] = [5,+∞], AbsArray.bot) *)
+
+(* ─── SUB ──────────────────────────────────────────────────────────────────── *)
+
+let te_sub = abs_eval (SUB (NUM 10, LV (ID "j"))) test_mem;;  
+(* te_sub = ([10,10] - [-∞,-4] = [14,+∞], AbsArray.bot) *)
+
+(* ─── MUL ──────────────────────────────────────────────────────────────────── *)
+
+let te_mul = abs_eval (MUL (LV (ID "i"), LV (ID "r"))) test_mem;;  
+(* te_mul = ([0,+∞] * [5,6] = [0,+∞], AbsArray.bot) *)
+
+(* ─── DIV ──────────────────────────────────────────────────────────────────── *)
+
+let te_div1 = abs_eval (DIV (LV (ID "r"), NUM 2)) test_mem;;  
+(* te_div1 = ([5,6] / [2,2] = [2,3], AbsArray.bot) *)
+
+let te_div2 = abs_eval (DIV (LV (ID "i"), NUM 0)) test_mem;;  
+(* te_div2 = Bot *)
+
+(* ─── LE ──────────────────────────────────────────────────────────────────── *)
+
+let tc_le = abs_eval (LE (LV (ID "i"), NUM 10)) test_mem;;  
+(* tc_le = one   --  [0,+∞] ≤ [10,10] ⇒ top *)
+
+(* ─── EQ ──────────────────────────────────────────────────────────────────── *)
+
+let tc_eq = abs_eval (EQ (NUM 2, NUM 2)) test_mem;;  
+(* tc_eq = one   --  2 = 2 *)
+
+(* ─── LT ──────────────────────────────────────────────────────────────────── *)
+
+let tc_lt = abs_eval (LT (NUM 1, NUM 2)) test_mem;;  
+(* tc_lt = one   --  1 < 2 *)
+
+(* ─── GE ──────────────────────────────────────────────────────────────────── *)
+
+let tc_ge = abs_eval (GE (NUM 2, NUM 2)) test_mem;;  
+(* tc_ge = one   --  2 ≥ 2 *)
+
+(* ─── GT ──────────────────────────────────────────────────────────────────── *)
+
+let tc_gt = abs_eval (GT (NUM 3, NUM 2)) test_mem;;  
+(* tc_gt = one   --  3 > 2 *)
+
+(* ─── AND ─────────────────────────────────────────────────────────────────── *)
+
+let tb_and = abs_eval (AND (EQ (NUM 1, NUM 1), LT (NUM 0, NUM 1))) test_mem;;  
+(* tb_and = one   --  true ∧ true *)
+
+(* ─── OR ──────────────────────────────────────────────────────────────────── *)
+
+let tb_or  = abs_eval (OR  (EQ (NUM 1, NUM 2), LT (NUM 0, NUM 1))) test_mem;;  
+(* tb_or  = one   --  false ∨ true *)
