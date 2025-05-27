@@ -30,6 +30,7 @@ module type Interval = sig
   val band : t -> t -> t
   val bor : t -> t -> t
   val to_string : t -> string
+  val le_int : integer->integer->bool
 end
 
 module Interval : Interval = struct
@@ -55,19 +56,24 @@ module Interval : Interval = struct
       match i1,i2 with
       | Int(n1), Int(n2) -> n1 <= n2
       | MinusInf, Int(_) -> true
-      | _, MinusInf -> false
+      | PlusInf, Int(_) -> false
+      | PlusInf, MinusInf -> false
+      | MinusInf,MinusInf -> true
       | Int(_), PlusInf -> true
-      | PlusInf, _ -> false
+      | Int(_), MinusInf ->false
+      | PlusInf, PlusInf -> true
       | MinusInf, PlusInf -> true
-
   let ge_int (i1:integer) (i2:integer) = 
-     match i1,i2 with
-     | Int(n1), Int(n2) -> n1 >= n2
-     | MinusInf, _ -> false
-     | Int(_) , MinusInf -> true
-     | PlusInf, Int(_) -> true
-     | _, PlusInf -> false
-     | PlusInf, MinusInf -> true
+      match i1,i2 with
+      | Int(n1), Int(n2) -> n1 >= n2
+      | MinusInf, PlusInf -> false
+      | MinusInf, MinusInf -> true
+      | Int(_) , MinusInf -> true
+      | Int(_), PlusInf -> false
+      | PlusInf, Int(_) -> true
+      | MinusInf, Int(_) -> false
+      | PlusInf, PlusInf -> true
+      | PlusInf, MinusInf -> true
 
   let min (i1:integer) (i2:integer) = 
     if (le_int i1 i2) then i1 else i2
@@ -401,61 +407,65 @@ let new_allocsite : unit -> int =
   let id =  ref 0 in 
     fun _ -> (id := !id + 1; !id)
 
-let prune (b: S.exp) (m: AbsMem.t) = 
+let rec prune (b: S.exp) (m: AbsMem.t) = 
   match (AbsVal.get_interval (abs_eval b m)) with
   | Interval.Range(Interval.Int 1, Interval.Int 1) -> m
   | Interval.Range(Interval.Int 0, Interval.Int 0) -> AbsMem.empty 
   | Interval.Range(MinusInf, PlusInf) -> (
     match b with
+    | NOT(LT(e1, e2)) -> prune (GE(e1, e2)) m 
+    | NOT(GT(e1, e2)) -> prune (LE(e1, e2)) m 
+    | NOT(LE(e1, e2)) -> prune (GT(e1, e2)) m 
+    | NOT(GE(e1, e2)) -> prune (GE(e1, e2)) m 
     | LT(LV(ID x), e) -> 
         (match AbsVal.get_interval (abs_eval e m), AbsVal.get_interval (AbsMem.find (AbsLoc.Var x) m) with
-        | Range(Int l, _), Range(Int l_org, _) -> 
-          let new_val = if (l_org<=(l-1)) then  AbsVal.from_itv (Interval.Range(Int l_org, Int (l - 1))) else AbsVal.bot in 
+        | Range(Int l, _), Range(l_org, _) -> 
+          let new_val = if (Interval.le_int l_org (Int (l-1))) then  AbsVal.from_itv (Interval.Range(l_org, Int (l - 1))) else AbsVal.bot in 
           AbsMem.strong_update (AbsLoc.Var x) new_val m 
         | _,_ -> m)
     | LT(e, LV(ID x)) -> 
         (match AbsVal.get_interval (abs_eval e m), AbsVal.get_interval (AbsMem.find (AbsLoc.Var x) m) with
-        | Range(_, Int u), Range(_, Int u_org)  -> 
-          let new_val = if ((u+1)<=u_org) then AbsVal.from_itv (Interval.Range(Int (u + 1), Int u_org)) else AbsVal.bot in 
+        | Range(_, Int u), Range(_, u_org)  -> 
+          let new_val = if (Interval.le_int (Int (u+1)) u_org) then AbsVal.from_itv (Interval.Range(Int (u + 1), u_org)) else AbsVal.bot in 
           AbsMem.strong_update (AbsLoc.Var x) new_val m 
         | _, _ -> m)
     | GT(LV(ID x), e) -> 
       ( match AbsVal.get_interval (abs_eval e m), AbsVal.get_interval (AbsMem.find (AbsLoc.Var x) m) with
-        | Range(_, Int u), Range(_, Int u_org)  -> 
-            let new_val = if (u+1<=u_org) then AbsVal.from_itv (Interval.Range(Int (u + 1), Int u_org)) else AbsVal.bot in 
+        | Range(_, Int u), Range(_, u_org)  -> 
+            let new_val = if (Interval.le_int (Int(u+1)) u_org) then AbsVal.from_itv (Interval.Range(Int (u + 1), u_org)) else AbsVal.bot in 
             AbsMem.strong_update (AbsLoc.Var x) new_val m 
         | _, _ -> m)
     | GT(e, LV(ID x)) -> 
       (
         match AbsVal.get_interval (abs_eval e m) , AbsVal.get_interval (AbsMem.find (AbsLoc.Var x) m) with
-        | Range(Int l, _),Range(Int l_org, _) ->  
-          let new_val = if (l_org<=l-1) then AbsVal.from_itv (Interval.Range(Int l_org, Int (l - 1))) else AbsVal.bot in 
+        | Range(Int l, _),Range(l_org, _) ->  
+          let new_val = if (Interval.le_int l_org (Int(l-1))) then AbsVal.from_itv (Interval.Range(l_org, Int (l - 1))) else AbsVal.bot in 
           AbsMem.strong_update (AbsLoc.Var x) new_val m 
         | _, _ -> m
       )
     | LE(LV(ID x), e) -> 
       (match AbsVal.get_interval (abs_eval e m), AbsVal.get_interval (AbsMem.find (AbsLoc.Var x) m) with
-        | Range(Int l, _), Range(Int l_org, _) -> 
-          let new_val = if (l_org<=(l)) then  AbsVal.from_itv (Interval.Range(Int l_org, Int (l))) else AbsVal.bot in 
+        | Range(Int l, _), Range(l_org, _) -> 
+          let new_val = if (Interval.le_int l_org (Int(l))) then  AbsVal.from_itv (Interval.Range(l_org, Int (l))) else AbsVal.bot in 
           AbsMem.strong_update (AbsLoc.Var x) new_val m 
         | _,_ -> m)
     | LE(e, LV(ID x)) -> 
         (match AbsVal.get_interval (abs_eval e m), AbsVal.get_interval (AbsMem.find (AbsLoc.Var x) m) with
-        | Range(_, Int u), Range(_, Int u_org)  -> 
-          let new_val = if ((u)<=u_org) then AbsVal.from_itv (Interval.Range(Int (u), Int u_org)) else AbsVal.bot in 
+        | Range(_, Int u), Range(_, u_org)  -> 
+          let new_val = if (Interval.le_int (Int(u)) u_org) then AbsVal.from_itv (Interval.Range(Int (u), u_org)) else AbsVal.bot in 
           AbsMem.strong_update (AbsLoc.Var x) new_val m 
         | _, _ -> m)
     | GE(LV(ID x), e) ->
       ( match AbsVal.get_interval (abs_eval e m), AbsVal.get_interval (AbsMem.find (AbsLoc.Var x) m) with
-        | Range(_, Int u), Range(_, Int u_org)  -> 
-            let new_val = if (u<=u_org) then AbsVal.from_itv (Interval.Range(Int (u), Int u_org)) else AbsVal.bot in 
+        | Range(_, Int u), Range(_, u_org)  -> 
+            let new_val = if (Interval.le_int (Int u) u_org) then AbsVal.from_itv (Interval.Range(Int (u), u_org)) else AbsVal.bot in 
             AbsMem.strong_update (AbsLoc.Var x) new_val m 
         | _, _ -> m)
     | GE(e, LV(ID x)) -> 
       (
         match AbsVal.get_interval (abs_eval e m) , AbsVal.get_interval (AbsMem.find (AbsLoc.Var x) m) with
-        | Range(Int l, _),Range(Int l_org, _) ->  
-          let new_val = if (l_org<=l) then AbsVal.from_itv (Interval.Range(Int l_org, Int (l))) else AbsVal.bot in 
+        | Range(Int l, _),Range(l_org, _) ->  
+          let new_val = if (Interval.le_int l_org (Int l)) then AbsVal.from_itv (Interval.Range(l_org, Int (l))) else AbsVal.bot in 
           AbsMem.strong_update (AbsLoc.Var x) new_val m 
         | _, _ -> m
       )
@@ -476,17 +486,19 @@ let prune (b: S.exp) (m: AbsMem.t) =
     | _ -> m
   )
   | _-> AbsMem.empty
+    
+
 
 let transfer : Node.t -> AbsMem.t -> AbsMem.t
 = fun node m -> 
   match Node.get_instr node with
   | I_alloc(id, size) -> 
-    (let new_arr = AbsArray.create (new_allocsite ()) (size) in 
+    (let new_arr = AbsArray.create (Node.get_nodeid node) (size) in 
     let new_mem = AbsMem.add (Var id) (Interval.bot, new_arr) AbsMem.empty in 
     let allocsites = AbsArray.get_allocsites new_arr in
     let to_join = BatSet.fold (fun e acc -> AbsMem.add (Allocsite (e)) (Range(Int 0, Int 0), AbsArray.bot) acc) allocsites new_mem in 
-    AbsMem.join m to_join
-    
+    let joined = AbsMem.join m to_join in 
+    joined 
     )
 
   | I_assign(lv, e) -> 
@@ -501,14 +513,72 @@ let transfer : Node.t -> AbsMem.t -> AbsMem.t
         BatSet.fold (fun elt acc -> AbsMem.join acc (AbsMem.weak_update elt abs_val acc)) loc_set m
       ) 
   | I_skip -> m
-  | I_assume b -> prune b m 
+  | I_assume e -> prune e m
   | I_read id -> 
     AbsMem.strong_update (AbsLoc.Var id) (Interval.top, AbsArray.bot) m
   | I_print _ -> m
 
-let fixpoint : Cfg.t -> Table.t
-=fun _ -> Table.empty
 
+let widening : Cfg.t -> Table.t
+=fun cfg -> 
+  let work_list = Cfg.nodesof cfg in 
+  let table = Table.init work_list in 
+  let rec loop w x =
+    match w with
+    | [] -> x
+    | h::t -> 
+      (
+        let preds = Cfg.preds h cfg in 
+        let joined_mem = NodeSet.fold (
+          fun elt acc -> 
+            AbsMem.join (Table.find elt x) acc
+          ) preds AbsMem.empty in 
+        let s = transfer h joined_mem in  
+        if (AbsMem.order s (Table.find h x)) then 
+          (loop t x)
+        else
+          (let x_h = Table.find h x in
+          let new_x = if Cfg.is_loophead h cfg then 
+             (Table.add h (AbsMem.widen x_h s) x )
+            else 
+              (Table.add h (AbsMem.join x_h s) x ) in 
+          let new_w = t@(NodeSet.fold (fun elt acc -> acc@(if (List.mem elt t) then [] else [elt])) (Cfg.succs h cfg) []) in 
+          loop new_w new_x
+          ) 
+      ) in 
+  loop work_list table
+
+let narrowing : Cfg.t -> Table.t -> Table.t
+=fun cfg table -> 
+  let work_list = Cfg.nodesof cfg in 
+  let rec loop w x = 
+    match w with
+    | [] -> x
+    | h::t -> 
+      (
+        let preds = Cfg.preds h cfg in 
+        let joined_mem = NodeSet.fold (
+          fun elt acc -> 
+            AbsMem.join (Table.find elt x) acc
+          ) preds AbsMem.empty in 
+        let s = transfer h joined_mem in  
+        if not(AbsMem.order (Table.find h x) s) then 
+          (let x_h = Table.find h x in 
+          let new_x = Table.add h (AbsMem.narrow x_h s) x  in 
+          let new_w = t@(NodeSet.fold (fun elt acc -> acc@(if (List.mem elt t) then [] else [elt])) (Cfg.succs h cfg) []) in 
+          loop new_w new_x
+          ) 
+        else
+          (loop t x)
+      ) in 
+  loop work_list table
+
+let fixpoint : Cfg.t -> Table.t
+= fun cfg -> 
+  let table = widening cfg in 
+  let table = narrowing cfg table in 
+  let _ = Table.print table in 
+  table
 let inspect : Cfg.t -> Table.t -> bool 
 =fun _ _ -> true 
 

@@ -614,13 +614,54 @@ let tc1 = (
   );
 
   ASSIGN (
-    ARR ("arr", LV (ID "i")),   (* 좌변: arr[i] *)
+    ARR ("a", SUB(LV (ID "i"), NUM 1)),   (* 좌변: arr[i] *)
     NUM 1
   );
 ]
 )
 
-let test_cfg = cfg_b tc1;;
+let example_prog : program =
+  ( (* decls *)
+    [ (TINT,  "i")
+    ; (TARR 10, "a")
+    ]
+  , (* stmts *)
+    [ WHILE (
+        EQ (NUM 1, NUM 1)  (* while (1 == 1) *),
+        BLOCK (
+          (* inside the loop we declare j *)
+          [ (TINT, "j") ],
+          [ (* statements in the body *)
+            READ "j";
+            IF (
+              LE (NUM 0, LV (ID "j")),   (* if (0 <= j) *)
+              BLOCK (
+                [],                      (* no new decls here *)
+                [ IF (
+                    LT (LV (ID "j"), NUM 10),           (* if (j < 10) *)
+                    BLOCK (
+                      [],
+                      [ ASSIGN (
+                          ARR ("a", LV (ID "j")),      (* a[j] = i; *)
+                          LV  (ID "i")
+                        )
+                      ]
+                    ),
+                    BLOCK ([], [])                      (* else do nothing *)
+                  )
+                ]
+              ),
+              BLOCK ([], [])           (* else of outer if does nothing *)
+            );
+            ASSIGN (ID "i", ADD (LV (ID "i"), NUM 1))  (* i++ *)
+          ]
+        )
+      )
+    ]
+  )
+;;
+
+let test_cfg =Cfg.remove_unnecessary_skips (cfg_b example_prog);;
 let nodes = Cfg.print test_cfg;;
 let _ = Cfg.dot (Cfg.remove_unnecessary_skips test_cfg);;
 
@@ -653,6 +694,7 @@ module type Interval = sig
   val band : t -> t -> t
   val bor : t -> t -> t
   val to_string : t -> string
+  val le_int : integer->integer->bool
 end;;
 
 module Interval : Interval = struct
@@ -677,18 +719,24 @@ module Interval : Interval = struct
       match i1,i2 with
       | Int(n1), Int(n2) -> n1 <= n2
       | MinusInf, Int(_) -> true
-      | _, MinusInf -> false
+      | PlusInf, Int(_) -> false
+      | PlusInf, MinusInf -> false
+      | MinusInf,MinusInf -> true
       | Int(_), PlusInf -> true
-      | PlusInf, _ -> false
+      | Int(_), MinusInf ->false
+      | PlusInf, PlusInf -> true
       | MinusInf, PlusInf -> true
 
   let ge_int (i1:integer) (i2:integer) = 
       match i1,i2 with
       | Int(n1), Int(n2) -> n1 >= n2
-      | MinusInf, _ -> false
+      | MinusInf, PlusInf -> false
+      | MinusInf, MinusInf -> true
       | Int(_) , MinusInf -> true
+      | Int(_), PlusInf -> false
       | PlusInf, Int(_) -> true
-      | _, PlusInf -> false
+      | MinusInf, Int(_) -> false
+      | PlusInf, PlusInf -> true
       | PlusInf, MinusInf -> true
 
   let min (i1:integer) (i2:integer) = 
@@ -989,6 +1037,7 @@ module Table : Table = struct
   =fun n t -> try NodeMap.find n t with _ -> AbsMem.empty
   let print t = NodeMap.iter (fun n m -> 
     prerr_endline (string_of_int (Node.get_nodeid n)); 
+    prerr_endline (Node.to_string (n)); 
     AbsMem.print m; 
     prerr_endline "") t  
 end;;
@@ -998,8 +1047,6 @@ let new_allocsite : unit -> int =
   let id =  ref 0 in 
     fun _ -> (id := !id + 1; !id);;
 
-(*Test cfg*)  
-let _ = Cfg.print test_cfg;;
 
 let new_arr = AbsArray.create (new_allocsite ()) (1000);;
 
@@ -1053,53 +1100,53 @@ let prune (b: exp) (m: AbsMem.t) =
     match b with
     | LT(LV(ID x), e) -> 
         (match AbsVal.get_interval (abs_eval e m), AbsVal.get_interval (AbsMem.find (AbsLoc.Var x) m) with
-        | Range(Int l, _), Range(Int l_org, _) -> 
-          let new_val = if (l_org<=(l-1)) then  AbsVal.from_itv (Interval.Range(Int l_org, Int (l - 1))) else AbsVal.bot in 
+        | Range(Int l, _), Range(l_org, _) -> 
+          let new_val = if (Interval.le_int l_org (Int (l-1))) then  AbsVal.from_itv (Interval.Range(l_org, Int (l - 1))) else AbsVal.bot in 
           AbsMem.strong_update (AbsLoc.Var x) new_val m 
         | _,_ -> m)
     | LT(e, LV(ID x)) -> 
         (match AbsVal.get_interval (abs_eval e m), AbsVal.get_interval (AbsMem.find (AbsLoc.Var x) m) with
-        | Range(_, Int u), Range(_, Int u_org)  -> 
-          let new_val = if ((u+1)<=u_org) then AbsVal.from_itv (Interval.Range(Int (u + 1), Int u_org)) else AbsVal.bot in 
+        | Range(_, Int u), Range(_, u_org)  -> 
+          let new_val = if (Interval.le_int (Int (u+1)) u_org) then AbsVal.from_itv (Interval.Range(Int (u + 1), u_org)) else AbsVal.bot in 
           AbsMem.strong_update (AbsLoc.Var x) new_val m 
         | _, _ -> m)
     | GT(LV(ID x), e) -> 
       ( match AbsVal.get_interval (abs_eval e m), AbsVal.get_interval (AbsMem.find (AbsLoc.Var x) m) with
-        | Range(_, Int u), Range(_, Int u_org)  -> 
-            let new_val = if (u+1<=u_org) then AbsVal.from_itv (Interval.Range(Int (u + 1), Int u_org)) else AbsVal.bot in 
+        | Range(_, Int u), Range(_, u_org)  -> 
+            let new_val = if (Interval.le_int (Int(u+1)) u_org) then AbsVal.from_itv (Interval.Range(Int (u + 1), u_org)) else AbsVal.bot in 
             AbsMem.strong_update (AbsLoc.Var x) new_val m 
         | _, _ -> m)
     | GT(e, LV(ID x)) -> 
       (
         match AbsVal.get_interval (abs_eval e m) , AbsVal.get_interval (AbsMem.find (AbsLoc.Var x) m) with
-        | Range(Int l, _),Range(Int l_org, _) ->  
-          let new_val = if (l_org<=l-1) then AbsVal.from_itv (Interval.Range(Int l_org, Int (l - 1))) else AbsVal.bot in 
+        | Range(Int l, _),Range(l_org, _) ->  
+          let new_val = if (Interval.le_int l_org (Int(l-1))) then AbsVal.from_itv (Interval.Range(l_org, Int (l - 1))) else AbsVal.bot in 
           AbsMem.strong_update (AbsLoc.Var x) new_val m 
         | _, _ -> m
       )
     | LE(LV(ID x), e) -> 
       (match AbsVal.get_interval (abs_eval e m), AbsVal.get_interval (AbsMem.find (AbsLoc.Var x) m) with
-        | Range(Int l, _), Range(Int l_org, _) -> 
-          let new_val = if (l_org<=(l)) then  AbsVal.from_itv (Interval.Range(Int l_org, Int (l))) else AbsVal.bot in 
+        | Range(Int l, _), Range(l_org, _) -> 
+          let new_val = if (Interval.le_int l_org (Int(l))) then  AbsVal.from_itv (Interval.Range(l_org, Int (l))) else AbsVal.bot in 
           AbsMem.strong_update (AbsLoc.Var x) new_val m 
         | _,_ -> m)
     | LE(e, LV(ID x)) -> 
         (match AbsVal.get_interval (abs_eval e m), AbsVal.get_interval (AbsMem.find (AbsLoc.Var x) m) with
-        | Range(_, Int u), Range(_, Int u_org)  -> 
-          let new_val = if ((u)<=u_org) then AbsVal.from_itv (Interval.Range(Int (u), Int u_org)) else AbsVal.bot in 
+        | Range(_, Int u), Range(_, u_org)  -> 
+          let new_val = if (Interval.le_int (Int(u)) u_org) then AbsVal.from_itv (Interval.Range(Int (u), u_org)) else AbsVal.bot in 
           AbsMem.strong_update (AbsLoc.Var x) new_val m 
         | _, _ -> m)
     | GE(LV(ID x), e) ->
       ( match AbsVal.get_interval (abs_eval e m), AbsVal.get_interval (AbsMem.find (AbsLoc.Var x) m) with
-        | Range(_, Int u), Range(_, Int u_org)  -> 
-            let new_val = if (u<=u_org) then AbsVal.from_itv (Interval.Range(Int (u), Int u_org)) else AbsVal.bot in 
+        | Range(_, Int u), Range(_, u_org)  -> 
+            let new_val = if (Interval.le_int (Int u) u_org) then AbsVal.from_itv (Interval.Range(Int (u), u_org)) else AbsVal.bot in 
             AbsMem.strong_update (AbsLoc.Var x) new_val m 
         | _, _ -> m)
     | GE(e, LV(ID x)) -> 
       (
         match AbsVal.get_interval (abs_eval e m) , AbsVal.get_interval (AbsMem.find (AbsLoc.Var x) m) with
-        | Range(Int l, _),Range(Int l_org, _) ->  
-          let new_val = if (l_org<=l) then AbsVal.from_itv (Interval.Range(Int l_org, Int (l))) else AbsVal.bot in 
+        | Range(Int l, _),Range(l_org, _) ->  
+          let new_val = if (Interval.le_int l_org (Int l)) then AbsVal.from_itv (Interval.Range(l_org, Int (l))) else AbsVal.bot in 
           AbsMem.strong_update (AbsLoc.Var x) new_val m 
         | _, _ -> m
       )
@@ -1127,12 +1174,12 @@ let transfer : Node.t -> AbsMem.t -> AbsMem.t
 = fun node m -> 
   match Node.get_instr node with
   | I_alloc(id, size) -> 
-    (let new_arr = AbsArray.create (new_allocsite ()) (size) in 
+    (let new_arr = AbsArray.create (Node.get_nodeid node) (size) in 
     let new_mem = AbsMem.add (Var id) (Interval.bot, new_arr) AbsMem.empty in 
     let allocsites = AbsArray.get_allocsites new_arr in
     let to_join = BatSet.fold (fun e acc -> AbsMem.add (Allocsite (e)) (Range(Int 0, Int 0), AbsArray.bot) acc) allocsites new_mem in 
-    AbsMem.join m to_join
-    
+    let joined = AbsMem.join m to_join in 
+    joined 
     )
 
   | I_assign(lv, e) -> 
@@ -1153,59 +1200,62 @@ let transfer : Node.t -> AbsMem.t -> AbsMem.t
   | I_print e -> m;;
 
 
+let widening : Cfg.t -> Table.t
+=fun cfg -> 
+  let work_list = Cfg.nodesof cfg in 
+  let table = Table.init work_list in 
+  let rec loop w x =
+    match w with
+    | [] -> x
+    | h::t -> 
+      (
+        let preds = Cfg.preds h cfg in 
+        let joined_mem = NodeSet.fold (
+          fun elt acc -> 
+            AbsMem.join (Table.find elt x) acc
+          ) preds AbsMem.empty in 
+        let s = transfer h joined_mem in  
+        if (AbsMem.order s (Table.find h x)) then 
+          (loop t x)
+        else
+          (let x_h = Table.find h x in
+          let new_x = if Cfg.is_loophead h cfg then 
+             (Table.add h (AbsMem.widen x_h s) x )
+            else 
+              (Table.add h (AbsMem.join x_h s) x ) in 
+          let new_w = t@(NodeSet.fold (fun elt acc -> acc@(if (List.mem elt t) then [] else [elt])) (Cfg.succs h cfg) []) in 
+          loop new_w new_x
+          ) 
+      ) in 
+  loop work_list table;;
 
-(* assume you have loaded all the definitions above, including
-       `prune : exp -> AbsMem.t -> AbsMem.t` *)  
+let narrowing : Cfg.t -> Table.t -> Table.t
+=fun cfg table -> 
+  let work_list = Cfg.nodesof cfg in 
+  let rec loop w x = 
+    match w with
+    | [] -> x
+    | h::t -> 
+      (
+        let preds = Cfg.preds h cfg in 
+        let joined_mem = NodeSet.fold (
+          fun elt acc -> 
+            AbsMem.join (Table.find elt x) acc
+          ) preds AbsMem.empty in 
+        let s = transfer h joined_mem in  
+        if not(AbsMem.order (Table.find h x) s) then 
+          (let x_h = Table.find h x in 
+          let new_x = Table.add h (AbsMem.narrow x_h s) x  in 
+          let new_w = t@(NodeSet.fold (fun elt acc -> acc@(if (List.mem elt t) then [] else [elt])) (Cfg.succs h cfg) []) in 
+          loop new_w new_x
+          ) 
+        else
+          (loop t x)
+      ) in 
+  loop work_list table;;
 
-(* ─── set up a simple abstract state: i ∈ [0,10] ───────────────────────────── *)
 
-let m0 =
-  AbsMem.empty
-  |> AbsMem.add (AbsLoc.Var "i")
-       ( Interval.Range (Interval.Int 0, Interval.Int 10)
-       , AbsArray.bot )
-;;
-
-(* ─── LT  i < 10   ⇒  i ∈ [0,9] ────────────────────────────────────────────── *)
-let pr1 = prune (LT (LV (ID "i"), NUM 10)) m0;;
-(* pr1 = i ↦ [0, 9] *)
-let _ = AbsMem.print pr1;;
-(* ─── LE  i ≤ 10   ⇒  i ∈ [0,10] ────────────────────────────────────────────── *)
-let pr2 = prune (LE (LV (ID "i"), NUM 10)) m0;;
-(* pr2 = i ↦ [0,10] *)
-let _ = AbsMem.print pr2;;
-(* ─── GT  i > 5    ⇒  i ∈ [6,10] ────────────────────────────────────────────── *)
-let pr3 = prune (GT (LV (ID "i"), NUM 5)) m0;;
-(* pr3 = i ↦ [6,10] *)
-let _ = AbsMem.print pr3;;
-(* ─── GE  i ≥ 5    ⇒  i ∈ [5,10] ────────────────────────────────────────────── *)
-let pr4 = prune (GE (LV (ID "i"), NUM 5)) m0;;
-(* pr4 = i ↦ [5,10] *)
-let _ = AbsMem.print pr4;;
-(* ─── EQ  i = 7    ⇒  i ∈ [7,7] ─────────────────────────────────────────────── *)
-let pr5 = prune (EQ (LV (ID "i"), NUM 7)) m0;;
-let _ = AbsMem.print pr5;;
-(* ─── reverse LT  3 < i   ⇒  i ∈ [4,10] ────────────────────────────────────── *)
-let pr6 = prune (LT (NUM 3, LV (ID "i"))) m0;;
-(* pr6 = i ↦ [4,10] *)
-let _ = AbsMem.print pr6;;
-(* ─── reverse LE  3 ≤ i   ⇒  i ∈ [3,10] ────────────────────────────────────── *)
-let pr7 = prune (LE (NUM 3, LV (ID "i"))) m0;;
-(* pr7 = i ↦ [3,10] *)
-let _ = AbsMem.print pr7;;
-(* ─── reverse GT  8 > i   ⇒  i ∈ [0,7] ─────────────────────────────────────── *)
-let pr8 = prune (GT (NUM 8, LV (ID "i"))) m0;;
-(* pr8 = i ↦ [0,7] *)
-let _ = AbsMem.print pr8;;
-(* ─── reverse GE  8 ≥ i   ⇒  i ∈ [0,8] ─────────────────────────────────────── *)
-let pr9 = prune (GE (NUM 8, LV (ID "i"))) m0;;
-(* pr9 = i ↦ [0,8] *)
-let _ = AbsMem.print pr9;;
-(* ─── condition known‐true ⇒ no change ────────────────────────────────────── *)
-let pr_true = prune (LT (NUM 0, NUM 1)) m0;;
-(* pr_true = m0 *)
-let _ = AbsMem.print pr_true;;
-(* ─── condition known‐false ⇒ bottom state ────────────────────────────────── *)
-let pr_false = prune (LT (NUM 1, NUM 0)) m0;;
-(* pr_false = AbsMem.empty *)
-let _ = AbsMem.print pr_false;;
+let test_table = widening test_cfg;;
+let _ = Table.print test_table;;
+let test_table = narrowing test_cfg test_table;;
+let _ = Table.print test_table;;
