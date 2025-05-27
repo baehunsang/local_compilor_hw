@@ -401,6 +401,82 @@ let new_allocsite : unit -> int =
   let id =  ref 0 in 
     fun _ -> (id := !id + 1; !id)
 
+let prune (b: S.exp) (m: AbsMem.t) = 
+  match (AbsVal.get_interval (abs_eval b m)) with
+  | Interval.Range(Interval.Int 1, Interval.Int 1) -> m
+  | Interval.Range(Interval.Int 0, Interval.Int 0) -> AbsMem.empty 
+  | Interval.Range(MinusInf, PlusInf) -> (
+    match b with
+    | LT(LV(ID x), e) -> 
+        (match AbsVal.get_interval (abs_eval e m), AbsVal.get_interval (AbsMem.find (AbsLoc.Var x) m) with
+        | Range(Int l, _), Range(Int l_org, _) -> 
+          let new_val = if (l_org<=(l-1)) then  AbsVal.from_itv (Interval.Range(Int l_org, Int (l - 1))) else AbsVal.bot in 
+          AbsMem.strong_update (AbsLoc.Var x) new_val m 
+        | _,_ -> m)
+    | LT(e, LV(ID x)) -> 
+        (match AbsVal.get_interval (abs_eval e m), AbsVal.get_interval (AbsMem.find (AbsLoc.Var x) m) with
+        | Range(_, Int u), Range(_, Int u_org)  -> 
+          let new_val = if ((u+1)<=u_org) then AbsVal.from_itv (Interval.Range(Int (u + 1), Int u_org)) else AbsVal.bot in 
+          AbsMem.strong_update (AbsLoc.Var x) new_val m 
+        | _, _ -> m)
+    | GT(LV(ID x), e) -> 
+      ( match AbsVal.get_interval (abs_eval e m), AbsVal.get_interval (AbsMem.find (AbsLoc.Var x) m) with
+        | Range(_, Int u), Range(_, Int u_org)  -> 
+            let new_val = if (u+1<=u_org) then AbsVal.from_itv (Interval.Range(Int (u + 1), Int u_org)) else AbsVal.bot in 
+            AbsMem.strong_update (AbsLoc.Var x) new_val m 
+        | _, _ -> m)
+    | GT(e, LV(ID x)) -> 
+      (
+        match AbsVal.get_interval (abs_eval e m) , AbsVal.get_interval (AbsMem.find (AbsLoc.Var x) m) with
+        | Range(Int l, _),Range(Int l_org, _) ->  
+          let new_val = if (l_org<=l-1) then AbsVal.from_itv (Interval.Range(Int l_org, Int (l - 1))) else AbsVal.bot in 
+          AbsMem.strong_update (AbsLoc.Var x) new_val m 
+        | _, _ -> m
+      )
+    | LE(LV(ID x), e) -> 
+      (match AbsVal.get_interval (abs_eval e m), AbsVal.get_interval (AbsMem.find (AbsLoc.Var x) m) with
+        | Range(Int l, _), Range(Int l_org, _) -> 
+          let new_val = if (l_org<=(l)) then  AbsVal.from_itv (Interval.Range(Int l_org, Int (l))) else AbsVal.bot in 
+          AbsMem.strong_update (AbsLoc.Var x) new_val m 
+        | _,_ -> m)
+    | LE(e, LV(ID x)) -> 
+        (match AbsVal.get_interval (abs_eval e m), AbsVal.get_interval (AbsMem.find (AbsLoc.Var x) m) with
+        | Range(_, Int u), Range(_, Int u_org)  -> 
+          let new_val = if ((u)<=u_org) then AbsVal.from_itv (Interval.Range(Int (u), Int u_org)) else AbsVal.bot in 
+          AbsMem.strong_update (AbsLoc.Var x) new_val m 
+        | _, _ -> m)
+    | GE(LV(ID x), e) ->
+      ( match AbsVal.get_interval (abs_eval e m), AbsVal.get_interval (AbsMem.find (AbsLoc.Var x) m) with
+        | Range(_, Int u), Range(_, Int u_org)  -> 
+            let new_val = if (u<=u_org) then AbsVal.from_itv (Interval.Range(Int (u), Int u_org)) else AbsVal.bot in 
+            AbsMem.strong_update (AbsLoc.Var x) new_val m 
+        | _, _ -> m)
+    | GE(e, LV(ID x)) -> 
+      (
+        match AbsVal.get_interval (abs_eval e m) , AbsVal.get_interval (AbsMem.find (AbsLoc.Var x) m) with
+        | Range(Int l, _),Range(Int l_org, _) ->  
+          let new_val = if (l_org<=l) then AbsVal.from_itv (Interval.Range(Int l_org, Int (l))) else AbsVal.bot in 
+          AbsMem.strong_update (AbsLoc.Var x) new_val m 
+        | _, _ -> m
+      )
+    | EQ(LV(ID x), e) -> 
+      (
+        let e_interval = AbsVal.get_interval (abs_eval e m) in
+        let x_interval  = AbsVal.get_interval (AbsMem.find (AbsLoc.Var x) m) in
+        let new_val = AbsVal.from_itv (Interval.meet e_interval x_interval) in 
+        AbsMem.strong_update (AbsLoc.Var x) new_val m 
+      )
+    | EQ(e, LV(ID x)) -> 
+      (
+        let e_interval = AbsVal.get_interval (abs_eval e m) in
+        let x_interval  = AbsVal.get_interval (AbsMem.find (AbsLoc.Var x) m) in
+        let new_val = AbsVal.from_itv (Interval.meet e_interval x_interval) in 
+        AbsMem.strong_update (AbsLoc.Var x) new_val m 
+      )
+    | _ -> m
+  )
+  | _-> AbsMem.empty
+
 let transfer : Node.t -> AbsMem.t -> AbsMem.t
 = fun node m -> 
   match Node.get_instr node with
@@ -425,7 +501,7 @@ let transfer : Node.t -> AbsMem.t -> AbsMem.t
         BatSet.fold (fun elt acc -> AbsMem.join acc (AbsMem.weak_update elt abs_val acc)) loc_set m
       ) 
   | I_skip -> m
-  | I_assume _ -> m
+  | I_assume b -> prune b m 
   | I_read id -> 
     AbsMem.strong_update (AbsLoc.Var id) (Interval.top, AbsArray.bot) m
   | I_print _ -> m
