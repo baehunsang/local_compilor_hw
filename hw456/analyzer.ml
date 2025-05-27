@@ -311,6 +311,8 @@ module type AbsMem = sig
   val find_set : AbsLoc.t BatSet.t -> t -> AbsVal.t 
   val add : AbsLoc.t -> AbsVal.t -> t -> t
   val add_set : AbsLoc.t BatSet.t -> AbsVal.t -> t -> t 
+  val strong_update : AbsLoc.t -> AbsVal.t -> t -> t
+  val weak_update : AbsLoc.t -> AbsVal.t -> t -> t
   val join : t -> t -> t 
   val widen : t -> t -> t 
   val narrow : t -> t -> t
@@ -395,6 +397,38 @@ and abs_eval_lv : S.lv->AbsMem.t->AbsLoc.t BatSet.t
     let allocsites, _ = arr_val in 
     BatSet.fold (fun elt acc -> BatSet.add (AbsLoc.Allocsite elt) acc) allocsites BatSet.empty
 
+let new_allocsite : unit -> int =
+  let id =  ref 0 in 
+    fun _ -> (id := !id + 1; !id)
+
+let transfer : Node.t -> AbsMem.t -> AbsMem.t
+= fun node m -> 
+  match Node.get_instr node with
+  | I_alloc(id, size) -> 
+    (let new_arr = AbsArray.create (new_allocsite ()) (size) in 
+    let new_mem = AbsMem.add (Var id) (Interval.bot, new_arr) AbsMem.empty in 
+    let allocsites = AbsArray.get_allocsites new_arr in
+    let to_join = BatSet.fold (fun e acc -> AbsMem.add (Allocsite (e)) (Range(Int 0, Int 0), AbsArray.bot) acc) allocsites new_mem in 
+    AbsMem.join m to_join
+    
+    )
+
+  | I_assign(lv, e) -> 
+    let loc_set = abs_eval_lv lv m in 
+    let abs_val = abs_eval e m in 
+    if BatSet.is_singleton (loc_set) then 
+      (
+        BatSet.fold (fun elt acc -> AbsMem.strong_update elt abs_val acc) loc_set m
+      )
+    else
+      (
+        BatSet.fold (fun elt acc -> AbsMem.join acc (AbsMem.weak_update elt abs_val acc)) loc_set m
+      ) 
+  | I_skip -> m
+  | I_assume _ -> m
+  | I_read id -> 
+    AbsMem.strong_update (AbsLoc.Var id) (Interval.top, AbsArray.bot) m
+  | I_print _ -> m
 
 let fixpoint : Cfg.t -> Table.t
 =fun _ -> Table.empty

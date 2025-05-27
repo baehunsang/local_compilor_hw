@@ -1045,6 +1045,8 @@ and abs_eval_lv : lv->AbsMem.t->AbsLoc.t BatSet.t
     let allocsites, size = arr_val in 
     BatSet.fold (fun elt acc -> BatSet.add (AbsLoc.Allocsite elt) acc) allocsites BatSet.empty;;
 
+
+    
 let transfer : Node.t -> AbsMem.t -> AbsMem.t
 = fun node m -> 
   match Node.get_instr node with
