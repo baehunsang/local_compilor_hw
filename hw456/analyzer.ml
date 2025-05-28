@@ -485,7 +485,7 @@ let rec prune (b: S.exp) (m: AbsMem.t) =
       )
     | _ -> m
   )
-  | _-> AbsMem.empty
+  | _-> m
     
 
 
@@ -534,9 +534,7 @@ let widening : Cfg.t -> Table.t
             AbsMem.join (Table.find elt x) acc
           ) preds AbsMem.empty in 
         let s = transfer h joined_mem in  
-        if (AbsMem.order s (Table.find h x)) then 
-          (loop t x)
-        else
+        if not(AbsMem.order s (Table.find h x)) then 
           (let x_h = Table.find h x in
           let new_x = if Cfg.is_loophead h cfg then 
              (Table.add h (AbsMem.widen x_h s) x )
@@ -545,6 +543,8 @@ let widening : Cfg.t -> Table.t
           let new_w = t@(NodeSet.fold (fun elt acc -> acc@(if (List.mem elt t) then [] else [elt])) (Cfg.succs h cfg) []) in 
           loop new_w new_x
           ) 
+        else
+          (loop t x)
       ) in 
   loop work_list table
 
@@ -579,8 +579,70 @@ let fixpoint : Cfg.t -> Table.t
   let table = narrowing cfg table in 
   let _ = Table.print table in 
   table
+
+let eval_node :G.Node.t -> AbsMem.t->bool
+= fun node m ->
+    if BatMap.is_empty m then true else
+    (let inst = G.Node.get_instr node in 
+    match inst with
+    | I_assign(ARR(x, i), e) -> 
+      (let index = abs_eval i m in 
+      let exp = abs_eval e m in 
+      let arr_val = AbsVal.get_absarray (AbsMem.find (AbsLoc.Var x) m) in 
+      let allocsites, size = arr_val in 
+      if BatSet.is_empty allocsites then false else (
+        match Interval.lt (AbsVal.get_interval index) (size) with
+        | Interval.Range(Int 1, Int 1) ->
+          (
+            match Interval.ge (AbsVal.get_interval index) (Interval.zero) with
+            | Interval.Range(Int 1, Int 1) -> 
+              (
+                match AbsVal.get_interval exp with
+                | Interval.Bot -> false
+                | _ -> true 
+              )
+            | _ -> false
+          ) 
+        | _ -> false
+      ))
+    | I_assign(_, e) -> 
+      (
+        let exp = abs_eval e m in 
+        match AbsVal.get_interval exp with
+        | Interval.Bot -> false
+        | _ -> true 
+      ) 
+    | I_assume(e) -> 
+      (
+        let exp = abs_eval e m in 
+        match AbsVal.get_interval exp with
+        | Interval.Bot -> false
+        | _ -> true 
+      ) 
+    | I_print(e) -> 
+      (
+        let exp = abs_eval e m in 
+        match AbsVal.get_interval exp with
+        | Interval.Bot -> false
+        | _ -> true 
+      ) 
+    | _ -> true)
+
+
+
 let inspect : Cfg.t -> Table.t -> bool 
-=fun _ _ -> true 
+=fun cfg table -> 
+  let nodes = Cfg.nodesof cfg in 
+  List.fold_left (
+    fun acc node -> 
+      let memory_of_node = Table.find node table in 
+      let eval_result = eval_node node memory_of_node in 
+      let _ = print_endline (Node.to_string node) in 
+      let _ = AbsMem.print memory_of_node in 
+      let _ = if BatMap.is_empty memory_of_node then print_endline "empty_mem" else prerr_endline "" in  
+      let _ = if eval_result then print_endline "true" else prerr_endline "false" in  
+      acc && eval_result
+  ) true nodes  
 
 let analyze : Cfg.t -> bool 
 =fun cfg -> 

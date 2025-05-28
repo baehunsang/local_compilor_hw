@@ -1,8 +1,9 @@
 {
   int i;
   int[1000] a;
-
-  while(i < 1000){
+  int n;
+  n = 1000;
+  while(i < n){
     i++;
   }
   a[i] = 1;

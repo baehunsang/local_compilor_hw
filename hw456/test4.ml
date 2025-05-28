@@ -1255,7 +1255,10 @@ let narrowing : Cfg.t -> Table.t -> Table.t
   loop work_list table;;
 
 
-let test_table = widening test_cfg;;
-let _ = Table.print test_table;;
-let test_table = narrowing test_cfg test_table;;
-let _ = Table.print test_table;;
+let fixpoint : Cfg.t -> Table.t
+= fun cfg -> 
+  let table = widening cfg in 
+  let table = narrowing cfg table in 
+  let _ = Table.print table in 
+  table;;
+
