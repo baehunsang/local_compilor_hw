@@ -577,7 +577,7 @@ let fixpoint : Cfg.t -> Table.t
 = fun cfg -> 
   let table = widening cfg in 
   let table = narrowing cfg table in 
-  let _ = Table.print table in 
+  (*let _ = Table.print table in *)
   table
 
 let eval_node :G.Node.t -> AbsMem.t->bool
@@ -637,10 +637,10 @@ let inspect : Cfg.t -> Table.t -> bool
     fun acc node -> 
       let memory_of_node = Table.find node table in 
       let eval_result = eval_node node memory_of_node in 
-      let _ = print_endline (Node.to_string node) in 
+      (*let _ = print_endline (Node.to_string node) in 
       let _ = AbsMem.print memory_of_node in 
       let _ = if BatMap.is_empty memory_of_node then print_endline "empty_mem" else prerr_endline "" in  
-      let _ = if eval_result then print_endline "true" else prerr_endline "false" in  
+      let _ = if eval_result then print_endline "true" else prerr_endline "false" in  *)
       acc && eval_result
   ) true nodes  
 
