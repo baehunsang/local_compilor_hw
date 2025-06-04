@@ -63,6 +63,7 @@ let main () =
 	|> run_s
 	|> run_g
 	|> run_t 
-	(*|> optimize_t *)
+	|> optimize_t 
+	|> run_t
 
 let _ = main ()
