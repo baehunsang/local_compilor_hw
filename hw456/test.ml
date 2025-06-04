@@ -324,7 +324,28 @@ module Cfg = struct
     |> remove_succs n 
     |> remove_preds n 
     |> (fun g -> { g with nodes = NodeSet.remove n g.nodes })
-    
+
+  let replace_node old_n new_n set =
+    NodeSet.fold (fun n acc ->
+      if Node.compare n old_n = 0 then NodeSet.add new_n acc
+      else NodeSet.add n acc
+    ) set NodeSet.empty
+
+  let replace_key old_n new_n map =
+    NodeMap.fold (fun k v acc ->
+      let k' = if Node.compare k old_n = 0 then new_n else k in
+      let v' = replace_node old_n new_n v in
+      NodeMap.add k' v' acc
+    ) map NodeMap.empty
+
+  let update_instr n instr g =
+    let n' = { n with Node.instr = instr } in
+    {
+      nodes = replace_node n n' g.nodes;
+      succs = replace_key n n' g.succs;
+      preds = replace_key n n' g.preds;
+    }
+
   let dot g =
     let oc = open_out "cfg.dot" in
     Printf.fprintf oc "digraph G {";
@@ -340,6 +361,15 @@ module Cfg = struct
     ) g.succs;
     Printf.fprintf oc "}";
     close_out oc
+end;;
+
+module Table= struct 
+  type t = int BatSet.t NodeMap.t
+  let empty = NodeMap.empty 
+  let add = NodeMap.add
+  let init ns = List.fold_right (fun n -> add n BatSet.empty) ns empty
+  let find : Node.t -> t -> int BatSet.t 
+  =fun n t -> try NodeMap.find n t with _ -> BatSet.empty 
 end;;
 
 let t_2_cfg (pgm : program) : Cfg.t =
@@ -391,6 +421,16 @@ let optimize (pgm : program) : program =
   pgm |> t_2_cfg |> cfg_2_t
 ;;
 
-let _ = execute example_prog;;
-let _ = Cfg.dot (t_2_cfg example_prog);;
-let _ = execute (cfg_2_t (t_2_cfg example_prog));;
+let sample_prog = [
+  (0, COPYC ("x", 0));
+  (0, HALT)
+];;
+
+let _ = execute sample_prog;;
+let cfg = t_2_cfg sample_prog;;
+let node0 = List.nth (Cfg.nodesof cfg) 0;;
+
+let cfg = Cfg.update_instr node0 (COPYC("x", 1)) cfg;;
+let _ = Cfg.dot cfg;;
+
+let _ = execute (cfg_2_t (t_2_cfg sample_prog));;

@@ -100,6 +100,27 @@ module Cfg = struct
     |> remove_succs n 
     |> remove_preds n 
     |> (fun g -> { g with nodes = NodeSet.remove n g.nodes })
+
+    let replace_node old_n new_n set =
+    NodeSet.fold (fun n acc ->
+      if Node.compare n old_n = 0 then NodeSet.add new_n acc
+      else NodeSet.add n acc
+    ) set NodeSet.empty
+
+  let replace_key old_n new_n map =
+    NodeMap.fold (fun k v acc ->
+      let k' = if Node.compare k old_n = 0 then new_n else k in
+      let v' = replace_node old_n new_n v in
+      NodeMap.add k' v' acc
+    ) map NodeMap.empty
+
+  let update_instr n instr g =
+    let n' = { n with Node.instr = instr } in
+    {
+      nodes = replace_node n n' g.nodes;
+      succs = replace_key n n' g.succs;
+      preds = replace_key n n' g.preds;
+    }
 end;;
 
 let t_2_cfg (pgm : program) : Cfg.t =
