@@ -38,8 +38,8 @@ module Node = struct
   let compare n1 n2 = compare n1.id n2.id
 end
 
-module NodeSet = Set.Make(Node);;
-module NodeMap = Map.Make(Node);;
+module NodeSet = Set.Make(Node)
+module NodeMap = Map.Make(Node)
 
 module Cfg = struct
   type t = {
@@ -121,7 +121,16 @@ module Cfg = struct
       succs = replace_key n n' g.succs;
       preds = replace_key n n' g.preds;
     }
-end;;
+end
+
+module Table= struct 
+  type t = int BatSet.t NodeMap.t
+  let empty = NodeMap.empty 
+  let add = NodeMap.add
+  let init ns = List.fold_right (fun n -> add n BatSet.empty) ns empty
+  let find : Node.t -> t -> int BatSet.t 
+  =fun n t -> try NodeMap.find n t with _ -> BatSet.empty 
+end
 
 let t_2_cfg (pgm : program) : Cfg.t =
   let nodes = List.map (fun (lbl, instr) -> Node.create lbl instr) pgm in
@@ -167,6 +176,78 @@ let cfg_2_t (cfg : Cfg.t) : program =
   Cfg.nodesof cfg
   |> List.sort (fun n1 n2 -> compare (Node.get_nodeid n1) (Node.get_nodeid n2))
   |> List.map (fun n -> (Node.get_label n, Node.get_instr n))
+
+let gen (n: Node.t) = 
+  let inst = Node.get_instr n in 
+  match inst with
+  | ASSIGNC(_, _, _, _) 
+  | ASSIGNV(_, _, _, _) 
+  | ASSIGNU(_, _, _) 
+  | COPY(_, _) 
+  | COPYC(_, _) 
+  | LOAD(_, _) 
+    -> BatSet.singleton (Node.get_nodeid n)
+  | _ -> BatSet.empty
+
+let kill (n: Node.t) (cfg:Cfg.t) =
+  let inst = Node.get_instr n in 
+  let my_id = Node.get_nodeid n in 
+  let nodes = Cfg.nodesof cfg in 
+  let to_killed var nodes = 
+    List.fold_left (
+      fun acc node -> 
+        let inst = Node.get_instr node in 
+        let id = Node.get_nodeid node in
+        match inst with
+        | ASSIGNC(x, _, _, _) 
+        | ASSIGNV(x, _, _, _) 
+        | ASSIGNU(x, _, _) 
+        | COPY(x, _) 
+        | COPYC(x, _) 
+        | LOAD(x, _) 
+          -> (if x=var then (BatSet.add id acc) else acc )
+        | _ -> acc
+    ) BatSet.empty nodes 
+  in
+  match inst with
+  | ASSIGNC(x, _, _, _) 
+  | ASSIGNV(x, _, _, _) 
+  | ASSIGNU(x, _, _) 
+  | COPY(x, _) 
+  | COPYC(x, _) 
+  | LOAD(x, _) 
+    -> BatSet.diff (to_killed x nodes) (BatSet.singleton my_id)
+  | _ -> BatSet.empty
+
+let compute_table nodes in_table out_table cfg = 
+  List.fold_left (
+    fun (prev_in, prev_out) node -> 
+      let preds = Cfg.preds node cfg in 
+      
+      (*compute new in set*)
+      let new_in_set = 
+        NodeSet.fold (
+          fun node acc -> 
+            BatSet.union acc (Table.find node prev_out)
+        ) preds BatSet.empty in 
+      
+      let new_in = Table.add node new_in_set prev_in in 
+      
+      (*compute new out set*)
+      let new_out_set = BatSet.union (gen node) (BatSet.diff (Table.find node new_in) (kill node cfg)) in 
+      let new_out = Table.add node new_out_set prev_out in 
+      (new_in, new_out)
+  ) (in_table, out_table) nodes
+
+(*fixpoint loop*)
+let rec solver nodes in_table out_table cfg = 
+  let prev_in = in_table in 
+  let prev_out = out_table in 
+  let (next_in, next_out) = compute_table nodes prev_in prev_out cfg in 
+  if (
+    ((NodeMap.compare (fun a b-> BatSet.compare a b) prev_in next_in)=0)&&
+    ((NodeMap.compare (fun a b-> BatSet.compare a b) prev_out next_out)=0)
+  ) then (next_in, next_out) else solver nodes next_in next_out cfg
 
 let optimize (pgm : program) : program =
   pgm |> t_2_cfg |> cfg_2_t

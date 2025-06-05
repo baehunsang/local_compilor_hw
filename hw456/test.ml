@@ -422,15 +422,128 @@ let optimize (pgm : program) : program =
 ;;
 
 let sample_prog = [
-  (0, COPYC ("x", 0));
+  (0, ASSIGNC("i", SUB, "m", 1)); (*d1: i = m - 1*)
+  (0, COPY("j", "n")); (*d2: j = n*)
+  (0, COPY("a", "u1")); (*d3: a = u1*)
+  (1, ASSIGNC("i", ADD, "i", 1)); (*d4: i + 1*)
+  (0, ASSIGNC("j", SUB, "j", 1)); (*d5: j= j-1*)
+  (0, ASSIGNC("b", GE, "i", 0)); (*d6: b = i >= 0*)
+  (0, CJUMP("b", 2)); (*d7: if b goto 2*)
+  (0, COPY("a", "u2"));(*d8: a = u2*)
+  (2, COPY("i", "u3"));(*d9: i=u3*)
+  (0, ASSIGNC("b", GE, "j", 0));(*d10: b = j>=0*)
+  (0, CJUMP("b", 1));(*d11: if b goto 1 *)
   (0, HALT)
 ];;
 
-let _ = execute sample_prog;;
 let cfg = t_2_cfg sample_prog;;
-let node0 = List.nth (Cfg.nodesof cfg) 0;;
-
-let cfg = Cfg.update_instr node0 (COPYC("x", 1)) cfg;;
 let _ = Cfg.dot cfg;;
 
-let _ = execute (cfg_2_t (t_2_cfg sample_prog));;
+
+let gen (n: Node.t) = 
+  let inst = Node.get_instr n in 
+  match inst with
+  | ASSIGNC(x, _, _, _) 
+  | ASSIGNV(x, _, _, _) 
+  | ASSIGNU(x, _, _) 
+  | COPY(x, _) 
+  | COPYC(x, _) 
+  | LOAD(x, _) 
+    -> BatSet.singleton (Node.get_nodeid n)
+  | _ -> BatSet.empty
+;;
+
+let kill (n: Node.t) (cfg:Cfg.t) =
+  let inst = Node.get_instr n in 
+  let my_id = Node.get_nodeid n in 
+  let nodes = Cfg.nodesof cfg in 
+  let to_killed var nodes = 
+    List.fold_left (
+      fun acc node -> 
+        let inst = Node.get_instr node in 
+        let id = Node.get_nodeid node in
+        match inst with
+        | ASSIGNC(x, _, _, _) 
+        | ASSIGNV(x, _, _, _) 
+        | ASSIGNU(x, _, _) 
+        | COPY(x, _) 
+        | COPYC(x, _) 
+        | LOAD(x, _) 
+          -> (if x=var then (BatSet.add id acc) else acc )
+        | _ -> acc
+    ) BatSet.empty nodes 
+  in
+  match inst with
+  | ASSIGNC(x, _, _, _) 
+  | ASSIGNV(x, _, _, _) 
+  | ASSIGNU(x, _, _) 
+  | COPY(x, _) 
+  | COPYC(x, _) 
+  | LOAD(x, _) 
+    -> BatSet.diff (to_killed x nodes) (BatSet.singleton my_id)
+  | _ -> BatSet.empty
+;;
+
+let nodes = Cfg.nodesof cfg;;
+let idx = 3;;
+let node = print_endline (Node.to_string (List.nth nodes idx));;
+let set = kill (List.nth nodes idx) cfg;;
+let _ = BatSet.fold (fun e acc -> print_endline (string_of_int e)) set ();;
+(*let _ = List.fold_left (fun acc node -> print_endline ((string_of_int (Node.get_nodeid node))^" "^(Node.to_string node))) () nodes;;*)
+
+let compute_table nodes in_table out_table cfg = 
+  List.fold_left (
+    fun (prev_in, prev_out) node -> 
+      let preds = Cfg.preds node cfg in 
+      
+      (*compute new in set*)
+      let new_in_set = 
+        NodeSet.fold (
+          fun node acc -> 
+            BatSet.union acc (Table.find node prev_out)
+        ) preds BatSet.empty in 
+      
+      let new_in = Table.add node new_in_set prev_in in 
+      
+      (*compute new out set*)
+      let new_out_set = BatSet.union (gen node) (BatSet.diff (Table.find node new_in) (kill node cfg)) in 
+      let new_out = Table.add node new_out_set prev_out in 
+      (new_in, new_out)
+  ) (in_table, out_table) nodes;;
+
+(*fixpoint loop*)
+let rec solver nodes in_table out_table cfg = 
+  let prev_in = in_table in 
+  let prev_out = out_table in 
+  let (next_in, next_out) = compute_table nodes prev_in prev_out cfg in 
+  if (
+    ((NodeMap.compare (fun a b-> BatSet.compare a b) prev_in next_in)=0)&&
+    ((NodeMap.compare (fun a b-> BatSet.compare a b) prev_out next_out)=0)
+  ) then (next_in, next_out) else solver nodes next_in next_out cfg;;
+
+(*lambda node : empty*)
+let in_table = Table.init nodes;;
+let out_table = Table.init nodes;;
+
+let (in_table, out_table) = solver nodes in_table out_table cfg;;
+
+(*print in, out set*)
+let _ = List.fold_left (
+  fun acc node -> 
+    let _ = print_endline "node: " in 
+    let _ = print_endline ((string_of_int (Node.get_nodeid node))^" "^(Node.to_string node)) in 
+     let _ = print_endline "in: " in 
+    let in_set = Table.find node in_table in 
+    let _ = print_string "{" in 
+    let _ = BatSet.fold (fun e acc -> 
+      print_string ((string_of_int e) ^ " ")
+      ) in_set () in
+    let out_set = Table.find node out_table in 
+    let _ = print_endline "}" in 
+     let _ = print_endline "out" in 
+    let _ = print_string "{" in 
+    let _ = BatSet.fold (fun e acc -> 
+      print_string ((string_of_int e) ^ " ")
+      ) out_set () in  
+    print_endline "}\n\n"
+) () nodes
