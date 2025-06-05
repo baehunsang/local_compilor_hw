@@ -436,6 +436,17 @@ let sample_prog = [
   (0, HALT)
 ];;
 
+let sample_prog = [
+  (0, COPYC("x", 0)); (*1*)
+  (0, COPYC(".t1", 0)); (*2*)
+  (0, COPY("x", ".t1")); (*3*)
+  (0, COPY(".t3", ".t1")); (*4*)
+  (0, COPYC(".t4", 1)); (*5*)
+  (0, ASSIGNV(".t2", ADD, ".t3", ".t4")); (*6*)
+  (0, (WRITE ".t2")); (*7*)
+  (0, HALT) 
+];;
+
 let cfg = t_2_cfg sample_prog;;
 let _ = Cfg.dot cfg;;
 
@@ -449,6 +460,7 @@ let gen (n: Node.t) =
   | COPY(x, _) 
   | COPYC(x, _) 
   | LOAD(x, _) 
+  | READ(x)
     -> BatSet.singleton (Node.get_nodeid n)
   | _ -> BatSet.empty
 ;;
@@ -469,6 +481,7 @@ let kill (n: Node.t) (cfg:Cfg.t) =
         | COPY(x, _) 
         | COPYC(x, _) 
         | LOAD(x, _) 
+        | READ(x)
           -> (if x=var then (BatSet.add id acc) else acc )
         | _ -> acc
     ) BatSet.empty nodes 
@@ -480,15 +493,12 @@ let kill (n: Node.t) (cfg:Cfg.t) =
   | COPY(x, _) 
   | COPYC(x, _) 
   | LOAD(x, _) 
+  | READ(x)
     -> BatSet.diff (to_killed x nodes) (BatSet.singleton my_id)
   | _ -> BatSet.empty
 ;;
 
 let nodes = Cfg.nodesof cfg;;
-let idx = 3;;
-let node = print_endline (Node.to_string (List.nth nodes idx));;
-let set = kill (List.nth nodes idx) cfg;;
-let _ = BatSet.fold (fun e acc -> print_endline (string_of_int e)) set ();;
 (*let _ = List.fold_left (fun acc node -> print_endline ((string_of_int (Node.get_nodeid node))^" "^(Node.to_string node))) () nodes;;*)
 
 let compute_table nodes in_table out_table cfg = 
@@ -547,3 +557,98 @@ let _ = List.fold_left (
       ) out_set () in  
     print_endline "}\n\n"
 ) () nodes
+
+
+let filter_node nodes input_set var = 
+  BatSet.fold (fun id acc -> 
+    let node = List.nth nodes (id - 1) in 
+    let instr = Node.get_instr node in 
+    match instr with
+    | ASSIGNC(x, _, _, _) 
+    | ASSIGNV(x, _, _, _) 
+    | ASSIGNU(x, _, _) 
+    | COPY(x, _) 
+    | COPYC(x, _) 
+    | LOAD(x, _) 
+    | READ(x)
+      -> if x=var then (NodeSet.add node acc) else acc 
+    | _ -> acc
+    ) input_set NodeSet.empty
+
+(*find out some node's reaching definition*)
+let filtered = filter_node nodes (Table.find (List.nth nodes 5) in_table) ".t4";;
+let _ = NodeSet.fold (fun node acc -> print_endline (Node.to_string node)) filtered ()
+
+(* 2) 노드 집합에서 COPYC(x, n)인 경우의 n만 모아 int 집합(BatSet)으로 반환 *)
+let extract_copyc_consts_set (nodeset : NodeSet.t) : int BatSet.t =
+  NodeSet.fold (fun node acc ->
+    match Node.get_instr node with
+    | COPYC (_, n) ->
+        (* n을 BatSet에 추가 *)
+        let _ = print_endline "debug2" in 
+        let _ = print_endline ("n: "^(string_of_int n)) in 
+        BatSet.add n acc
+    | _ ->
+        acc
+  ) nodeset BatSet.empty
+(*find out*)
+let n_set = extract_copyc_consts_set filtered;;
+let n = if BatSet.is_singleton n_set then BatSet.max_elt n_set else (-1);;
+
+
+(*constant propagation -> change ASSIGNC, ASSIGNV, ASSIGNU , COPY to COPYC*)
+let constant_propagation cfg in_table = 
+  let nodes = Cfg.nodesof cfg in 
+  List.fold_left (
+    fun acc node ->
+      let nodes = Cfg.nodesof acc in 
+      let inst = Node.get_instr node in
+      match inst with
+      | ASSIGNV(x, bop, y, z) -> (
+        let _ = print_endline y in 
+        (*find reaching definition for y*)
+        let reaching_definitions = filter_node nodes (Table.find node in_table) y in 
+        let n_set_y = extract_copyc_consts_set reaching_definitions in 
+        (*find reaching definition for z*)
+        let reaching_definitions = filter_node nodes (Table.find node in_table) z in 
+        let n_set_z = extract_copyc_consts_set reaching_definitions in 
+        let _ = print_endline y in 
+        
+        let _ = BatSet.fold (fun e acc -> print_endline (string_of_int e)) n_set_y () in 
+        let _ = BatSet.fold (fun e acc -> print_endline (string_of_int e)) n_set_z () in 
+        (*both are singletone*)
+        if (BatSet.is_singleton n_set_y)&&(BatSet.is_singleton n_set_z) then (
+
+          match bop with
+          | ADD -> Cfg.update_instr node (COPYC(x, (BatSet.max_elt n_set_y) + (BatSet.max_elt n_set_z))) acc
+          | SUB -> Cfg.update_instr node (COPYC(x, (BatSet.max_elt n_set_y) - (BatSet.max_elt n_set_z))) acc
+          | MUL -> Cfg.update_instr node (COPYC(x, (BatSet.max_elt n_set_y) * (BatSet.max_elt n_set_z))) acc
+          | DIV -> Cfg.update_instr node (COPYC(x, (BatSet.max_elt n_set_y) / (BatSet.max_elt n_set_z))) acc
+          | LT -> Cfg.update_instr node (COPYC(x, if ((BatSet.max_elt n_set_y) < (BatSet.max_elt n_set_z)) then 1 else 0)) acc
+          | LE -> Cfg.update_instr node (COPYC(x, if ((BatSet.max_elt n_set_y) <= (BatSet.max_elt n_set_z)) then 1 else 0)) acc
+          | GT -> Cfg.update_instr node (COPYC(x, if ((BatSet.max_elt n_set_y) > (BatSet.max_elt n_set_z)) then 1 else 0)) acc
+          | GE -> Cfg.update_instr node (COPYC(x, if ((BatSet.max_elt n_set_y) >= (BatSet.max_elt n_set_z)) then 1 else 0)) acc
+          | EQ -> Cfg.update_instr node (COPYC(x, if ((BatSet.max_elt n_set_y) = (BatSet.max_elt n_set_z)) then 1 else 0)) acc 
+          | AND -> Cfg.update_instr node (COPYC(x, if ((BatSet.max_elt n_set_y)!=0 && (BatSet.max_elt n_set_z)!=0) then 1 else 0)) acc
+          | OR -> Cfg.update_instr node (COPYC(x, if ((BatSet.max_elt n_set_y)!=0 || (BatSet.max_elt n_set_z)!=0) then 1 else 0)) acc
+        ) else (
+          if (BatSet.is_singleton n_set_z) then (
+            Cfg.update_instr node (ASSIGNC(x,bop,y ,BatSet.max_elt n_set_z)) acc
+          ) else (
+            (*TODO -> what if y is singleton*)
+            acc
+          )
+        )
+      )
+      | COPY(x, y) -> (
+        (*find out reaching definition*)
+        let reaching_definitions = filter_node nodes (Table.find node in_table) y in 
+        let n_set = extract_copyc_consts_set reaching_definitions in 
+        if BatSet.is_singleton n_set then (
+          Cfg.update_instr node (COPYC(x, BatSet.max_elt n_set)) acc
+         ) else acc
+      ) 
+      | _ -> acc
+  ) cfg nodes;;
+
+let _ = pp (cfg_2_t (constant_propagation cfg in_table));;
