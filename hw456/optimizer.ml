@@ -222,7 +222,7 @@ let kill (n: Node.t) (cfg:Cfg.t) =
     -> BatSet.diff (to_killed x nodes) (BatSet.singleton my_id)
   | _ -> BatSet.empty
 
-let compute_table nodes in_table out_table cfg = 
+let compute_table_for_rda nodes in_table out_table cfg = 
   List.fold_left (
     fun (prev_in, prev_out) node -> 
       let preds = Cfg.preds node cfg in 
@@ -243,14 +243,14 @@ let compute_table nodes in_table out_table cfg =
   ) (in_table, out_table) nodes
 
 (*fixpoint loop*)
-let rec solver nodes in_table out_table cfg = 
+let rec solver nodes in_table out_table cfg compute_table= 
   let prev_in = in_table in 
   let prev_out = out_table in 
   let (next_in, next_out) = compute_table nodes prev_in prev_out cfg in 
   if (
     ((NodeMap.compare (fun a b-> BatSet.compare a b) prev_in next_in)=0)&&
     ((NodeMap.compare (fun a b-> BatSet.compare a b) prev_out next_out)=0)
-  ) then (next_in, next_out) else solver nodes next_in next_out cfg
+  ) then (next_in, next_out) else solver nodes next_in next_out cfg compute_table
 
 
 let filter_node nodes input_set var = 
@@ -587,8 +587,73 @@ let copy_propagation cfg in_table =
   let ret = exchange_to_assignc ret nodes in_table in 
   exchange_to_assignu ret nodes in_table
 
+module Table2= struct 
+  type t = var BatSet.t NodeMap.t
+  let empty = NodeMap.empty 
+  let add = NodeMap.add
+  let init ns = List.fold_right (fun n -> add n BatSet.empty) ns empty
+  let find : Node.t -> t -> var BatSet.t 
+  =fun n t -> try NodeMap.find n t with _ -> BatSet.empty 
+end;;
+
+let def node = 
+  let instr = Node.get_instr node in 
+  match instr with
+  | ASSIGNV(x, _, _,_) 
+  | ASSIGNU(x,_,_) 
+  | COPY(x, _)          
+  | COPYC(x,_)       
+  | LOAD(x,_)         
+  | READ(x)
+    -> BatSet.singleton x
+  | _ -> BatSet.empty;;     
+  
+let use node = 
+  let instr = Node.get_instr node in 
+  match instr with
+  | ASSIGNV(_, _, y, z) -> (let ret = BatSet.empty in let ret = BatSet.add y ret in BatSet.add z ret)
+  | ASSIGNC(_, _, y, _) ->(let ret = BatSet.empty in BatSet.add y ret)
+  | ASSIGNU(_, _, y) -> (let ret = BatSet.empty in BatSet.add y ret)
+  | COPY(_, y) -> (let ret = BatSet.empty in BatSet.add y ret)
+  | LOAD(_, (a, i)) -> (let ret = BatSet.empty in let ret = BatSet.add a ret in BatSet.add i ret)
+  | STORE((a, i), x) -> (let ret = BatSet.empty in let ret = BatSet.add a ret in let ret = BatSet.add x ret in BatSet.add i ret)
+  | WRITE(x) -> (let ret = BatSet.empty in BatSet.add x ret)
+  | CJUMP(x,_) -> (let ret = BatSet.empty in BatSet.add x ret)
+  | CJUMPF(x,_) -> (let ret = BatSet.empty in BatSet.add x ret)
+  | _ -> BatSet.empty
 
 
+let compute_table_for_lva nodes in_table out_table cfg = 
+  List.fold_left (
+    fun (prev_in, prev_out) node -> 
+      let succs = Cfg.succs node cfg in 
+      let new_in_set = BatSet.union (use node) (BatSet.diff (Table2.find node prev_out) (def node)) in 
+      let new_in = Table2.add node new_in_set prev_in in 
+      let new_out_set = NodeSet.fold (
+          fun node acc -> 
+            BatSet.union acc (Table2.find node new_in)
+        ) succs BatSet.empty in 
+      let new_out = Table2.add node new_out_set prev_out in 
+      (new_in, new_out)
+  ) (in_table, out_table) nodes
+
+
+let delete_dead_code (cfg: Cfg.t) (nodes: Node.t list) (out_table: Table2.t) = 
+  List.fold_left (
+    fun acc node -> 
+      let inst = Node.get_instr node in
+      match inst with
+      | ASSIGNV(x,_,_,_) 
+      | ASSIGNC(x,_,_,_) 
+      | ASSIGNU(x,_,_ ) 
+      | COPY(x,_) 
+      | COPYC(x,_)
+      | LOAD(x,_) 
+      | READ(x) ->  if (BatSet.mem x (Table2.find node out_table)) then acc else (Cfg.remove_node node acc) 
+      | ALLOC(x, _) -> (if (BatSet.mem x (Table2.find node out_table)) then acc else (Cfg.remove_node node acc)
+      )
+      | _ -> acc
+  ) cfg nodes
 
 
 let optimize (pgm : program) : program =
@@ -597,7 +662,7 @@ let optimize (pgm : program) : program =
   let nodes = Cfg.nodesof cfg in 
   let in_table = Table.init nodes in 
   let out_table = Table.init nodes in 
-  let (in_table, _) = solver nodes in_table out_table cfg in  
+  let (in_table, _) = solver nodes in_table out_table cfg compute_table_for_rda in  
   (*
   let _ = List.fold_left (
   fun _ node -> 
@@ -622,5 +687,30 @@ let optimize (pgm : program) : program =
   let propagated = constant_propagation cfg in_table in 
   let propagated = variable_propagation propagated in_table in
   let propagated = copy_propagation propagated in_table in 
-  
+
+  (*LVA*)
+  let in_table = Table2.init (Cfg.nodesof propagated) in 
+  let out_table = Table2.init (Cfg.nodesof propagated) in 
+  let (_, out_table) = solver (Cfg.nodesof propagated) in_table out_table cfg compute_table_for_lva in
+(*let _ = List.fold_left (
+  fun _ node -> 
+    let _ = print_endline "node: " in 
+    let _ = print_endline ((string_of_int (Node.get_nodeid node))^" "^(Node.to_string node)) in 
+     let _ = print_endline "in: " in 
+    let in_set = Table2.find node in_table in 
+    let _ = print_string "{" in 
+    let _ = BatSet.fold (fun e _ -> 
+      print_string ((e) ^ " ")
+      ) in_set () in
+    let out_set = Table2.find node out_table in 
+    let _ = print_endline "}" in 
+     let _ = print_endline "out" in 
+    let _ = print_string "{" in 
+    let _ = BatSet.fold (fun e _ -> 
+      print_string ((e) ^ " ")
+      ) out_set () in  
+    print_endline "}\n\n"
+  ) () (Cfg.nodesof propagated) in *)
+  let propagated = delete_dead_code propagated (Cfg.nodesof propagated) out_table in 
+
   cfg_2_t propagated
