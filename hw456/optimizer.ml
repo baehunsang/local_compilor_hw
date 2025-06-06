@@ -496,6 +496,101 @@ let variable_propagation cfg in_table =
       | _ -> acc
   ) cfg nodes
 
+(*Optimize for COPY
+  ex.
+  tn = x + 1
+  x = .tn
+*)
+
+let extract_assignv_instr (nodeset : NodeSet.t) : (instr) BatSet.t =
+  NodeSet.fold (fun node acc ->
+    match Node.get_instr node with
+    | ASSIGNV (x, _, y, _) ->if (String.compare x y)!=0 then (BatSet.add (Node.get_instr node) acc) else (acc)
+    | _ -> acc
+  ) nodeset BatSet.empty
+
+let extract_assignc_instr (nodeset : NodeSet.t) : (instr) BatSet.t =
+  NodeSet.fold (fun node acc ->
+    match Node.get_instr node with
+    | ASSIGNC (x, _, y, _) ->if (String.compare x y)!=0 then (BatSet.add (Node.get_instr node) acc) else (acc)
+    | _ -> acc
+  ) nodeset BatSet.empty
+
+let extract_assignu_instr (nodeset : NodeSet.t) : (instr) BatSet.t =
+  NodeSet.fold (fun node acc ->
+    match Node.get_instr node with
+    | ASSIGNU (x, _, y) ->if (String.compare x y)!=0 then  (BatSet.add (Node.get_instr node) acc) else (acc)
+    | _ -> acc
+  ) nodeset BatSet.empty
+
+let exchange_to_assignv cfg nodes in_table = 
+  List.fold_left (
+    fun acc node ->
+      let nodes = Cfg.nodesof acc in 
+      let inst = Node.get_instr node in
+      match inst with
+      | COPY(x, y) -> (
+          let reaching_definitions = filter_node nodes (Table.find node in_table) y in
+          let assignv_set = extract_assignv_instr reaching_definitions in 
+          if (BatSet.is_singleton assignv_set) then (
+            match BatSet.max_elt assignv_set with
+            | ASSIGNV(_, bop, y', z') ->  Cfg.update_instr node (ASSIGNV(x, bop, y', z')) acc
+            (*DO NOT HAPPEN*)
+            | _ -> acc
+          ) else (acc)
+        )
+      | _ -> acc
+  ) cfg nodes 
+
+let exchange_to_assignc cfg nodes in_table = 
+  List.fold_left (
+    fun acc node ->
+      let nodes = Cfg.nodesof acc in 
+      let inst = Node.get_instr node in
+      match inst with
+      | COPY(x, y) -> (
+          let reaching_definitions = filter_node nodes (Table.find node in_table) y in
+          let assignv_set = extract_assignc_instr reaching_definitions in 
+          if (BatSet.is_singleton assignv_set) then (
+            match BatSet.max_elt assignv_set with
+            | ASSIGNC(_, bop, y', z') -> Cfg.update_instr node (ASSIGNC(x, bop, y', z')) acc
+            (*DO NOT HAPPEN*)
+            | _ -> acc
+          ) else (acc)
+        )
+      | _ -> acc
+  ) cfg nodes 
+
+let exchange_to_assignu cfg nodes in_table = 
+  List.fold_left (
+    fun acc node ->
+      let nodes = Cfg.nodesof acc in 
+      let inst = Node.get_instr node in
+      match inst with
+      | COPY(x, y) -> (
+          let reaching_definitions = filter_node nodes (Table.find node in_table) y in
+          let assignv_set = extract_assignc_instr reaching_definitions in 
+          if (BatSet.is_singleton assignv_set) then (
+            match BatSet.max_elt assignv_set with
+            | ASSIGNU(_, uop, y') -> Cfg.update_instr node (ASSIGNU(x, uop, y')) acc
+            (*DO NOT HAPPEN*)
+            | _ -> acc
+          ) else (acc)
+        )
+      | _ -> acc
+  ) cfg nodes 
+
+
+let copy_propagation cfg in_table = 
+  let nodes = Cfg.nodesof cfg in 
+  let ret = exchange_to_assignv cfg nodes in_table in 
+  let ret = exchange_to_assignc ret nodes in_table in 
+  exchange_to_assignu ret nodes in_table
+
+
+
+
+
 let optimize (pgm : program) : program =
   (*RDA*)
   let cfg = t_2_cfg pgm in
@@ -526,5 +621,6 @@ let optimize (pgm : program) : program =
 *)
   let propagated = constant_propagation cfg in_table in 
   let propagated = variable_propagation propagated in_table in
+  let propagated = copy_propagation propagated in_table in 
   
   cfg_2_t propagated
