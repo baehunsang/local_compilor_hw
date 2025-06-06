@@ -275,11 +275,19 @@ let extract_copyc_consts_set (nodeset : NodeSet.t) : int BatSet.t =
     match Node.get_instr node with
     | COPYC (_, n) ->
         BatSet.add n acc
-    | _ ->
-        BatSet.empty
+    | _ -> acc
   ) nodeset BatSet.empty
 
-(*constant propagation -> change ASSIGNC, ASSIGNV, ASSIGNU , COPY to COPYC*)
+let extract_copy_variable_set (nodeset : NodeSet.t) : var BatSet.t =
+  NodeSet.fold (fun node acc ->
+    match Node.get_instr node with
+    | COPY (_, y) ->
+        BatSet.add y acc
+    | _ -> acc
+  ) nodeset BatSet.empty
+
+(*constant propagation -> change ASSIGNC, ASSIGNV, ASSIGNU , COPY to COPYC or ASSIGNC*)
+(*Make sure you can exchange the variable to constant or other variable iff n_set is singleton and v_Set is empty or vv*)
 let constant_propagation cfg in_table = 
   let nodes = Cfg.nodesof cfg in 
   List.fold_left (
@@ -292,12 +300,14 @@ let constant_propagation cfg in_table =
         (*find reaching definition for y*)
         let reaching_definitions = filter_node nodes (Table.find node in_table) y in 
         let n_set_y = extract_copyc_consts_set reaching_definitions in 
+        let v_set_y = extract_copy_variable_set reaching_definitions in
         (*find reaching definition for z*)
         let reaching_definitions = filter_node nodes (Table.find node in_table) z in 
+        let v_set_z = extract_copy_variable_set reaching_definitions in 
         let n_set_z = extract_copyc_consts_set reaching_definitions in 
 
         (*both are singletone*)
-        if (BatSet.is_singleton n_set_y)&&(BatSet.is_singleton n_set_z) then (
+        if (BatSet.is_singleton n_set_y)&&(BatSet.is_singleton n_set_z)&&(BatSet.is_empty v_set_y)&&(BatSet.is_empty v_set_z) then (
 
           match bop with
           | ADD -> Cfg.update_instr node (COPYC(x, (BatSet.max_elt n_set_y) + (BatSet.max_elt n_set_z))) acc
@@ -315,22 +325,176 @@ let constant_propagation cfg in_table =
           if (BatSet.is_singleton n_set_z) then (
             Cfg.update_instr node (ASSIGNC(x,bop,y ,BatSet.max_elt n_set_z)) acc
           ) else (
-            (*TODO -> what if y is singleton*)
             acc
           )
         )
       )
+
+
+      | ASSIGNC(x, bop, y, n) -> (
+        (*find reaching definition for y*)
+        let reaching_definitions = filter_node nodes (Table.find node in_table) y in 
+        let n_set_y = extract_copyc_consts_set reaching_definitions in 
+        let v_set_y = extract_copy_variable_set reaching_definitions in
+        if (BatSet.is_singleton n_set_y)&&(BatSet.is_empty v_set_y) then (
+          match bop with
+          | ADD -> Cfg.update_instr node (COPYC(x, (BatSet.max_elt n_set_y) + n)) acc
+          | SUB -> Cfg.update_instr node (COPYC(x, (BatSet.max_elt n_set_y) - n)) acc
+          | MUL -> Cfg.update_instr node (COPYC(x, (BatSet.max_elt n_set_y) * n)) acc
+          | DIV -> Cfg.update_instr node (COPYC(x, (BatSet.max_elt n_set_y) / n)) acc
+          | LT -> Cfg.update_instr node (COPYC(x, if ((BatSet.max_elt n_set_y) < n) then 1 else 0)) acc
+          | LE -> Cfg.update_instr node (COPYC(x, if ((BatSet.max_elt n_set_y) <= n) then 1 else 0)) acc
+          | GT -> Cfg.update_instr node (COPYC(x, if ((BatSet.max_elt n_set_y) > n) then 1 else 0)) acc
+          | GE -> Cfg.update_instr node (COPYC(x, if ((BatSet.max_elt n_set_y) >= n) then 1 else 0)) acc
+          | EQ -> Cfg.update_instr node (COPYC(x, if ((BatSet.max_elt n_set_y) = n) then 1 else 0)) acc 
+          | AND -> Cfg.update_instr node (COPYC(x, if ((BatSet.max_elt n_set_y)!=0 && n!=0) then 1 else 0)) acc
+          | OR -> Cfg.update_instr node (COPYC(x, if ((BatSet.max_elt n_set_y)!=0 || n!=0) then 1 else 0)) acc
+        ) else (
+            acc
+        )
+
+      )
+
+      | ASSIGNU(x, uop, y)-> (
+        (*find reaching definition for y*)
+        let reaching_definitions = filter_node nodes (Table.find node in_table) y in 
+        let n_set_y = extract_copyc_consts_set reaching_definitions in 
+        let v_set_y = extract_copy_variable_set reaching_definitions in
+         if (BatSet.is_singleton n_set_y)&&(BatSet.is_empty v_set_y) then (
+          match uop with
+          | MINUS ->(
+            Cfg.update_instr node (COPYC(x, -(BatSet.max_elt n_set_y))) acc
+          ) 
+          | NOT -> (
+            Cfg.update_instr node (COPYC(x, (if (BatSet.max_elt n_set_y)=0 then 1 else 0))) acc
+          )
+        ) else (
+            acc
+        )
+      )
+
       | COPY(x, y) -> (
         (*find out reaching definition*)
         let reaching_definitions = filter_node nodes (Table.find node in_table) y in 
-        let n_set = extract_copyc_consts_set reaching_definitions in 
-        if BatSet.is_singleton n_set then (
-          Cfg.update_instr node (COPYC(x, BatSet.max_elt n_set)) acc
+        let v_set_y = extract_copy_variable_set reaching_definitions in
+        let n_set_y = extract_copyc_consts_set reaching_definitions in 
+        if (BatSet.is_singleton n_set_y)&&(BatSet.is_empty v_set_y) then (
+          Cfg.update_instr node (COPYC(x, BatSet.max_elt n_set_y)) acc
          ) else acc
       ) 
       | _ -> acc
   ) cfg nodes
 
+
+(*variable propagation -*)
+let variable_propagation cfg in_table = 
+  let nodes = Cfg.nodesof cfg in 
+  List.fold_left (
+    fun acc node ->
+      let nodes = Cfg.nodesof acc in 
+      let inst = Node.get_instr node in
+      match inst with
+      | ASSIGNV(x, bop, y, z) -> (
+
+        (*find reaching definition for y*)
+        let reaching_definitions = filter_node nodes (Table.find node in_table) y in 
+        let v_set_y = extract_copy_variable_set reaching_definitions in 
+        let n_set_y = extract_copyc_consts_set reaching_definitions in 
+        (*find reaching definition for z*)
+        let reaching_definitions = filter_node nodes (Table.find node in_table) z in 
+        let v_set_z = extract_copy_variable_set reaching_definitions in 
+        let n_set_z = extract_copyc_consts_set reaching_definitions in 
+
+        (*both are singletone*)
+        if (BatSet.is_singleton v_set_y)&&(BatSet.is_singleton v_set_z)&&(BatSet.is_empty n_set_y)&&(BatSet.is_empty n_set_z) then (
+          Cfg.update_instr node (ASSIGNV(x,bop,BatSet.max_elt v_set_y ,BatSet.max_elt v_set_z)) acc
+        ) else (
+          if (BatSet.is_singleton v_set_z)&&(BatSet.is_empty n_set_z) then (
+            Cfg.update_instr node (ASSIGNV(x,bop,y ,BatSet.max_elt v_set_z)) acc
+          ) else (
+            if (BatSet.is_singleton v_set_y)&&(BatSet.is_empty n_set_y) then (
+               Cfg.update_instr node (ASSIGNV(x,bop,BatSet.max_elt v_set_y ,z)) acc
+            ) else acc
+          )
+        )
+      )
+
+
+      | ASSIGNC(x, bop, y, n) -> (
+        (*find reaching definition for y*)
+        let reaching_definitions = filter_node nodes (Table.find node in_table) y in 
+        let v_set_y = extract_copy_variable_set reaching_definitions in 
+        let n_set_y = extract_copyc_consts_set reaching_definitions in 
+        if (BatSet.is_singleton v_set_y)&&(BatSet.is_empty n_set_y) then (
+          Cfg.update_instr node (ASSIGNC(x,bop, BatSet.max_elt v_set_y , n)) acc
+        ) else (
+            acc
+        )
+      )
+
+      | ASSIGNU(x, uop, y)-> (
+        (*find reaching definition for y*)
+        let reaching_definitions = filter_node nodes (Table.find node in_table) y in 
+        let v_set_y = extract_copy_variable_set reaching_definitions in 
+        let n_set_y = extract_copyc_consts_set reaching_definitions in 
+         if (BatSet.is_singleton v_set_y)&&(BatSet.is_empty n_set_y) then (
+          Cfg.update_instr node (ASSIGNU(x,uop, BatSet.max_elt v_set_y)) acc
+        ) else (
+            acc
+        )
+      )
+
+      | COPY(x, y) -> (
+        (*find out reaching definition*)
+        let reaching_definitions = filter_node nodes (Table.find node in_table) y in 
+        let v_set = extract_copy_variable_set reaching_definitions in 
+        let n_set_y = extract_copyc_consts_set reaching_definitions in
+        if (BatSet.is_singleton v_set)&&(BatSet.is_empty n_set_y) then (
+          Cfg.update_instr node (COPY(x, BatSet.max_elt v_set)) acc
+         ) else (acc)
+      ) 
+
+      | LOAD(x, (a, i))->(
+        let reaching_definitions = filter_node nodes (Table.find node in_table) i in 
+        let v_set = extract_copy_variable_set reaching_definitions in 
+        let n_set_y = extract_copyc_consts_set reaching_definitions in
+        if (BatSet.is_singleton v_set)&&(BatSet.is_empty n_set_y) then (
+          Cfg.update_instr node (LOAD(x, (a, BatSet.max_elt v_set))) acc
+         ) else (acc)
+      )
+      | STORE((a, i), x) -> (
+         (*find reaching definition for y*)
+        let reaching_definitions = filter_node nodes (Table.find node in_table) i in 
+        let v_set_y = extract_copy_variable_set reaching_definitions in 
+        let n_set_y = extract_copyc_consts_set reaching_definitions in 
+        (*find reaching definition for z*)
+        let reaching_definitions = filter_node nodes (Table.find node in_table) x in 
+        let v_set_z = extract_copy_variable_set reaching_definitions in 
+        let n_set_z = extract_copyc_consts_set reaching_definitions in 
+
+        (*both are singletone*)
+        if (BatSet.is_singleton v_set_y)&&(BatSet.is_singleton v_set_z)&&(BatSet.is_empty n_set_y)&&(BatSet.is_empty n_set_z) then (
+          Cfg.update_instr node (STORE((a, BatSet.max_elt v_set_y), BatSet.max_elt v_set_z)) acc
+        ) else (
+          if (BatSet.is_singleton v_set_z)&&(BatSet.is_empty n_set_z) then (
+            Cfg.update_instr node (STORE((a, i), BatSet.max_elt v_set_z)) acc
+          ) else (
+            if (BatSet.is_singleton v_set_y)&&(BatSet.is_empty n_set_y) then (
+              Cfg.update_instr node (STORE((a, BatSet.max_elt v_set_y), x)) acc
+            ) else acc
+          )
+        )
+      )
+      | WRITE(x) -> (
+        let reaching_definitions = filter_node nodes (Table.find node in_table) x in 
+        let v_set = extract_copy_variable_set reaching_definitions in 
+        let n_set_y = extract_copyc_consts_set reaching_definitions in
+        if (BatSet.is_singleton v_set)&&(BatSet.is_empty n_set_y) then (
+          Cfg.update_instr node (WRITE(BatSet.max_elt v_set)) acc
+         ) else (acc)
+      )
+      | _ -> acc
+  ) cfg nodes
 
 let optimize (pgm : program) : program =
   (*RDA*)
@@ -361,5 +525,6 @@ let optimize (pgm : program) : program =
   ) () (Cfg.nodesof cfg) in 
 *)
   let propagated = constant_propagation cfg in_table in 
+  let propagated = variable_propagation propagated in_table in
   
   cfg_2_t propagated
