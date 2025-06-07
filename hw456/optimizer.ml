@@ -121,6 +121,14 @@ module Cfg = struct
       succs = replace_key n n' g.succs;
       preds = replace_key n n' g.preds;
     }
+    
+  let update_label n label g =
+    let n' = { n with Node.label = label } in
+    {
+      nodes = replace_node n n' g.nodes;
+      succs = replace_key n n' g.succs;
+      preds = replace_key n n' g.preds;
+    }
 end
 
 module Table= struct 
@@ -649,8 +657,22 @@ let delete_dead_code (cfg: Cfg.t) (nodes: Node.t list) (out_table: Table2.t) =
       | COPY(x,_) 
       | COPYC(x,_)
       | LOAD(x,_) 
-      | READ(x) ->  if (BatSet.mem x (Table2.find node out_table)) then acc else (Cfg.remove_node node acc) 
-      | ALLOC(x, _) -> (if (BatSet.mem x (Table2.find node out_table)) then acc else (Cfg.remove_node node acc)
+      | READ(x) 
+      | ALLOC(x, _) -> (if (BatSet.mem x (Table2.find node out_table)) then acc else (Cfg.remove_node node acc))
+      | _ -> acc
+  ) cfg nodes
+
+
+let delete_skip (cfg: Cfg.t) (nodes: Node.t list) = 
+  List.fold_left (
+    fun acc node -> 
+      let inst = Node.get_instr node in
+      match inst with
+      | SKIP -> (
+        let succ_node = NodeSet.max_elt(Cfg.succs node acc) in 
+        let label = Node.get_label node in 
+        let label_moved = Cfg.update_label succ_node label acc in 
+        Cfg.remove_node node label_moved
       )
       | _ -> acc
   ) cfg nodes
@@ -712,5 +734,7 @@ let optimize (pgm : program) : program =
     print_endline "}\n\n"
   ) () (Cfg.nodesof propagated) in *)
   let propagated = delete_dead_code propagated (Cfg.nodesof propagated) out_table in 
+  let propagated = t_2_cfg (cfg_2_t propagated) in 
+  let propagated = delete_skip propagated (Cfg.nodesof propagated) in 
 
   cfg_2_t propagated
