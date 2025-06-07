@@ -510,27 +510,28 @@ let variable_propagation cfg in_table =
   x = .tn
 *)
 
-let extract_assignv_instr (nodeset : NodeSet.t) : (instr) BatSet.t =
+let extract_assignv_instr (nodeset : NodeSet.t) : NodeSet.t =
   NodeSet.fold (fun node acc ->
     match Node.get_instr node with
-    | ASSIGNV (x, _, y, _) ->if (String.compare x y)!=0 then (BatSet.add (Node.get_instr node) acc) else (acc)
+    | ASSIGNV (x, _, y, z) ->if (String.compare x y)!=0 &&  (String.compare x z)!=0 then (NodeSet.add node acc) else (acc)
     | _ -> acc
-  ) nodeset BatSet.empty
+  ) nodeset NodeSet.empty
 
-let extract_assignc_instr (nodeset : NodeSet.t) : (instr) BatSet.t =
+let extract_assignc_instr (nodeset : NodeSet.t) : NodeSet.t =
   NodeSet.fold (fun node acc ->
     match Node.get_instr node with
-    | ASSIGNC (x, _, y, _) ->if (String.compare x y)!=0 then (BatSet.add (Node.get_instr node) acc) else (acc)
+    | ASSIGNC (x, _, y, _) ->if (String.compare x y)!=0 then (NodeSet.add node acc) else (acc)
     | _ -> acc
-  ) nodeset BatSet.empty
+  ) nodeset NodeSet.empty
 
-let extract_assignu_instr (nodeset : NodeSet.t) : (instr) BatSet.t =
+let extract_assignu_instr (nodeset : NodeSet.t) : NodeSet.t =
   NodeSet.fold (fun node acc ->
     match Node.get_instr node with
-    | ASSIGNU (x, _, y) ->if (String.compare x y)!=0 then  (BatSet.add (Node.get_instr node) acc) else (acc)
+    | ASSIGNU (x, _, y) ->if (String.compare x y)!=0 then  (NodeSet.add node acc) else (acc)
     | _ -> acc
-  ) nodeset BatSet.empty
+  ) nodeset NodeSet.empty
 
+(* Make sure there are no instrs in predset of COPY while propagation*)
 let exchange_to_assignv cfg nodes in_table = 
   List.fold_left (
     fun acc node ->
@@ -540,9 +541,9 @@ let exchange_to_assignv cfg nodes in_table =
       | COPY(x, y) -> (
           let reaching_definitions = filter_node nodes (Table.find node in_table) y in
           let assignv_set = extract_assignv_instr reaching_definitions in 
-          if (BatSet.is_singleton assignv_set) then (
-            match BatSet.max_elt assignv_set with
-            | ASSIGNV(_, bop, y', z') ->  Cfg.update_instr node (ASSIGNV(x, bop, y', z')) acc
+          if (List.length (NodeSet.elements assignv_set) = 1) then (
+            match Node.get_instr (NodeSet.max_elt assignv_set) with
+            | ASSIGNV(_, bop, y', z') -> if (NodeSet.mem (NodeSet.max_elt assignv_set) (Cfg.preds node acc)) then Cfg.update_instr node (ASSIGNV(x, bop, y', z')) acc else acc
             (*DO NOT HAPPEN*)
             | _ -> acc
           ) else (acc)
@@ -559,9 +560,9 @@ let exchange_to_assignc cfg nodes in_table =
       | COPY(x, y) -> (
           let reaching_definitions = filter_node nodes (Table.find node in_table) y in
           let assignv_set = extract_assignc_instr reaching_definitions in 
-          if (BatSet.is_singleton assignv_set) then (
-            match BatSet.max_elt assignv_set with
-            | ASSIGNC(_, bop, y', z') -> Cfg.update_instr node (ASSIGNC(x, bop, y', z')) acc
+          if (List.length (NodeSet.elements assignv_set) = 1) then (
+            match Node.get_instr (NodeSet.max_elt assignv_set) with
+            | ASSIGNC(_, bop, y', z') -> if (NodeSet.mem (NodeSet.max_elt assignv_set) (Cfg.preds node acc)) then Cfg.update_instr node (ASSIGNC(x, bop, y', z')) acc else acc
             (*DO NOT HAPPEN*)
             | _ -> acc
           ) else (acc)
@@ -578,9 +579,9 @@ let exchange_to_assignu cfg nodes in_table =
       | COPY(x, y) -> (
           let reaching_definitions = filter_node nodes (Table.find node in_table) y in
           let assignv_set = extract_assignc_instr reaching_definitions in 
-          if (BatSet.is_singleton assignv_set) then (
-            match BatSet.max_elt assignv_set with
-            | ASSIGNU(_, uop, y') -> Cfg.update_instr node (ASSIGNU(x, uop, y')) acc
+          if (List.length (NodeSet.elements assignv_set) = 1) then (
+            match Node.get_instr (NodeSet.max_elt assignv_set) with
+            | ASSIGNU(_, uop, y') -> if (NodeSet.mem (NodeSet.max_elt assignv_set) (Cfg.preds node acc)) then Cfg.update_instr node (ASSIGNU(x, uop, y')) acc else acc
             (*DO NOT HAPPEN*)
             | _ -> acc
           ) else (acc)
