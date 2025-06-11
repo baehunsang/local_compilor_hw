@@ -670,10 +670,12 @@ let delete_skip (cfg: Cfg.t) (nodes: Node.t list) =
       let inst = Node.get_instr node in
       match inst with
       | SKIP -> (
+        let pred_node = NodeSet.max_elt(Cfg.succs node acc) in 
+        if (Node.get_instr pred_node)=SKIP then acc else (
         let succ_node = NodeSet.max_elt(Cfg.succs node acc) in 
         let label = Node.get_label node in 
         let label_moved = Cfg.update_label succ_node label acc in 
-        Cfg.remove_node node label_moved
+        Cfg.remove_node node label_moved)
       )
       | _ -> acc
   ) cfg nodes

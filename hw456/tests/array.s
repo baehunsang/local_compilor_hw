@@ -7,6 +7,9 @@
   while (i < 10) {
     arr[i] = i;
     i++;
+  }
+  while (j < 10) {
+    arr[j] = i;
     j++;
   }
   print (i);
